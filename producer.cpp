@@ -12,6 +12,9 @@
 #include <string>
 #include <vector>
 
+#include "Field.h"
+#include "Grid.h"
+
 #if SIZE_MAX == UCHAR_MAX
 #define MPI_SIZE_T MPI_UNSIGNED_CHAR
 #elif SIZE_MAX == USHRT_MAX
@@ -33,65 +36,6 @@
     printf("Error: %s\n", nc_strerror(e));                                     \
     return 2;                                                                  \
   }
-
-struct GridConf {
-  size_t lonlen, latlen, levlen;
-  size_t nbx = -1;
-  size_t nby = -1;
-  size_t isizepatch, jsizepatch;
-
-  void print() {
-    std::cout << "Lon : " << lonlen << " lat: " << latlen << " lev : " << levlen
-              << std::endl;
-  }
-};
-
-struct DomainConf {
-  size_t nx, ny;
-  size_t isize, jsize, levels, istart, jstart;
-};
-
-struct FieldProp {
-  FieldProp(const std::vector<size_t> &strides,
-            const std::vector<size_t> &sizes)
-      : strides_(strides), sizes_(sizes),
-        totalsize_(
-            std::accumulate(std::next(sizes.begin()), sizes.end(),
-                            sizes.at(0), // start with first element
-                            [](size_t tot, size_t el) { return tot * el; })) {}
-
-  size_t idx(std::vector<size_t> pos) {
-    assert(pos.size() == strides_.size());
-    size_t idx_ = 0;
-    for (int i = 0; i < pos.size(); ++i) {
-      idx_ += strides_.at(i) * pos[i];
-    }
-    return idx_;
-  }
-  std::vector<size_t> strides_;
-  std::vector<size_t> sizes_;
-  size_t totalsize_;
-};
-
-FieldProp makeGlobalFieldProp(GridConf const &gridconf) {
-  return FieldProp{
-      std::vector<size_t>{1, gridconf.lonlen,
-                          gridconf.lonlen * gridconf.latlen},
-      std::vector<size_t>{gridconf.lonlen, gridconf.latlen, gridconf.levlen}};
-}
-
-FieldProp makeDomainFieldProp(DomainConf const &domain) {
-  return FieldProp{
-      std::vector<size_t>{1, domain.isize, domain.isize * domain.jsize},
-      std::vector<size_t>{domain.isize, domain.jsize, domain.levels}};
-}
-FieldProp makePatchFieldProp(GridConf const &gridconf) {
-  return FieldProp{
-      std::vector<size_t>{1, gridconf.isizepatch,
-                          gridconf.isizepatch * gridconf.jsizepatch},
-      std::vector<size_t>{gridconf.isizepatch, gridconf.jsizepatch,
-                          gridconf.levlen}};
-}
 
 class ExampleEventCb : public RdKafka::EventCb {
 public:
@@ -150,38 +94,6 @@ public:
     //      std::cout << "Key: " << *(message.key()) << ";" << std::endl;
   }
 };
-
-int netcdfDump(int mpirank, float *f, const FieldProp &fieldProp,
-               std::string output) {
-
-  std::string filename = output + std::to_string(mpirank) + ".nc";
-  int retval, ncid;
-  if ((retval = nc_create(filename.c_str(), NC_WRITE | NC_NETCDF4, &ncid)))
-    ERR(retval);
-
-  int dims[3];
-  if ((retval = nc_def_dim(ncid, "longitude", fieldProp.sizes_[0], &(dims[2]))))
-    ERR(retval);
-  if ((retval = nc_def_dim(ncid, "latitude", fieldProp.sizes_[1], &(dims[1]))))
-    ERR(retval);
-  if ((retval = nc_def_dim(ncid, "level", fieldProp.sizes_[2], &(dims[0]))))
-    ERR(retval);
-
-  int uid;
-  if ((retval = nc_def_var(ncid, "u", NC_FLOAT, 3, dims, &uid)))
-    ERR(retval);
-
-  if ((retval = nc_put_var_float(ncid, uid, f)))
-    ERR(retval);
-
-  if ((retval = nc_close(ncid)))
-    ERR(retval);
-
-  std::cout << "******************* writing file " << filename
-            << " *****************" << std::endl;
-
-  return 0;
-}
 
 void mpierror() { MPI_Abort(MPI_COMM_WORLD, -1); }
 int main(int argc, char **argv) {
@@ -419,16 +331,21 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  std::cout << "% Created producer " << producer->name() << std::endl;
+  std::cout << "% Created producer " << producer->name() << " "
+            << subdomainconf.istart << subdomainconf.jstart << std::endl;
 
-  KeyMessage key{myrank,
-                 0,
-                 0,
+  KeyMessage key{"u",
+                 mpisize,
+                 myrank,
+                 subdomainconf.istart,
+                 subdomainconf.jstart,
                  0,
                  0,
                  domainFieldProp.sizes_[0],
                  domainFieldProp.sizes_[1],
-                 domainFieldProp.sizes_[2]};
+                 domainFieldProp.sizes_[2],
+                 gridconf.lonlen,
+                 gridconf.latlen};
 
   for (int i = 0; i < mpisize; ++i) {
     if (i == myrank) {

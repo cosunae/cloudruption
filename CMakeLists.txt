@@ -5,7 +5,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 find_package(MPI)
 find_package(netCDF REQUIRED)
 find_package(Rdkafka REQUIRED)
-set(COMMONSRC KeyMessage.h)
+set(COMMONSRC KeyMessage.h nctools.cpp nctools.h Field.cpp Field.h Grid.cpp Grid.h)
 
 add_executable(producer producer.cpp ${COMMONSRC})
 target_include_directories(producer SYSTEM PUBLIC ${netCDF_INCLUDE_DIR})
