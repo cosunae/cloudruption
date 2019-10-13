@@ -6,7 +6,7 @@ struct KeyMessage {
   char key[8];
   int npatches;
   int myrank;
-  size_t ilon_start, jlat_start;
+  size_t ilon_start, jlat_start, lev;
   float dlon, dlat;
   size_t lonlen, latlen, levlen;
   size_t totlonlen, totlatlen;

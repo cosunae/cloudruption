@@ -1,3 +1,4 @@
+#include "Config.h"
 #include "Field.h"
 #include "KeyMessage.h"
 #include <cstring>
@@ -195,6 +196,9 @@ int main() {
 
   std::string brokers = "localhost:9092";
 
+  Config config;
+  auto topics = config.getTopics();
+
   /*
    * Create configuration objects
    */
@@ -229,8 +233,6 @@ int main() {
 
   std::cout << "% Created consumer " << consumer->name() << std::endl;
 
-  std::vector<std::string> topics;
-  topics.push_back("test3");
   /*
    * Subscribe to topics
    */

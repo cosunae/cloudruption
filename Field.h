@@ -18,6 +18,8 @@ struct FieldProp {
   std::vector<size_t> strides_;
   std::vector<size_t> sizes_;
   size_t totalsize_;
+
+  const std::vector<size_t> &getSizes() { return sizes_; }
 };
 
 FieldProp makeGlobalFieldProp(GridConf const &gridconf);
