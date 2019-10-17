@@ -13,12 +13,12 @@ public:
     nlohmann::json config;
     std::ifstream fin("config.json");
     if (!fin.is_open()) {
-      throw("cannot to open config file config.json");
+      throw std::runtime_error("cannot to open config file config.json");
     }
     fin >> config;
 
     if (!config.count("topics")) {
-      throw("topics not found in config");
+      throw std::runtime_error("topics not found in config");
     }
     std::vector<std::string> topics;
 
@@ -30,5 +30,28 @@ public:
       topics.push_back(val);
     }
     return topics;
+  }
+
+  std::vector<std::string> getFiles() {
+    nlohmann::json config;
+    std::ifstream fin("config.json");
+    if (!fin.is_open()) {
+      throw std::runtime_error("cannot to open config file config.json");
+    }
+    fin >> config;
+
+    if (!config.count("files")) {
+      throw std::runtime_error("files not found in config");
+    }
+    std::vector<std::string> files;
+
+    auto files_cfg = config["files"];
+    std::cout << "Producing files :" << std::endl;
+    for (auto file : files_cfg) {
+      auto val = file.get<std::string>();
+      std::cout << "...  " << val << std::endl;
+      files.push_back(val);
+    }
+    return files;
   }
 };

@@ -1,7 +1,9 @@
 #include "Config.h"
 #include "Field.h"
 #include "KeyMessage.h"
+#include "nctools.h"
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <netcdf.h>
@@ -10,8 +12,6 @@
 #include <stdint.h>
 #include <string>
 #include <unordered_map>
-
-#include "nctools.h"
 
 static long msg_cnt = 0;
 static int64_t msg_bytes = 0;
@@ -24,12 +24,11 @@ static bool run = true;
 class SinglePatch {
 public:
   SinglePatch(size_t ilonstart, size_t jlatstart, size_t lonlen, size_t latlen,
-              size_t levlen, float *data)
+              size_t lev, float *data)
       : ilonstart_(ilonstart), jlatstart_(jlatstart), lonlen_(lonlen),
-        latlen_(latlen), levlen_(levlen) {
-    data_ =
-        static_cast<float *>(malloc(lonlen * latlen * levlen * sizeof(float)));
-    memcpy(data_, data, lonlen * latlen * levlen * sizeof(float));
+        latlen_(latlen), lev_(lev) {
+    data_ = static_cast<float *>(malloc(lonlen * latlen * sizeof(float)));
+    memcpy(data_, data, lonlen * latlen * sizeof(float));
   }
   // TODO fix this
   //  ~SinglePatch() { free(data_); }
@@ -38,86 +37,107 @@ public:
   size_t jlatStart() { return jlatstart_; }
   size_t lonlen() { return lonlen_; }
   size_t latlen() { return latlen_; }
-  size_t levlen() { return levlen_; }
-  float operator()(int i, int j, int k) {
-    return data_[k * lonlen_ * latlen_ + j * lonlen_ + i];
-  }
+  size_t lev() { return lev_; }
+  float operator()(int i, int j) { return data_[j * lonlen_ + i]; }
 
 private:
   size_t ilonstart_, jlatstart_;
-  size_t lonlen_, latlen_, levlen_;
+  size_t lonlen_, latlen_, lev_;
 
   float *data_;
 };
 
 class DistributedField {
+  std::string fieldName_;
+
+  DomainConf domain_;
+  size_t npatches_;
+  std::vector<SinglePatch> patches_;
+
 public:
-  DistributedField(size_t npatches, const size_t lonlen, const size_t latlen,
-                   const size_t levlen)
-      : npatches_(npatches), totlonlen_(lonlen), totlatlen_(latlen),
-        levlen_(levlen) {}
+  DistributedField(std::string fieldName, const DomainConf &domainConf,
+                   size_t npatches)
+      : fieldName_(fieldName), domain_(domainConf), npatches_(npatches) {}
 
   void insertPatch(size_t ilonstart, size_t jlatstart, size_t lonlen,
-                   size_t latlen, float *data) {
-    patches_.push_back(std::move(
-        SinglePatch{ilonstart, jlatstart, lonlen, latlen, levlen_, data}));
+                   size_t latlen, size_t k, float *data) {
+    patches_.push_back(
+        std::move(SinglePatch{ilonstart, jlatstart, lonlen, latlen, k, data}));
   }
-  void writeIfComplete() {
+  void writeIfComplete(NetCDFDumper &netcdfDumper) {
     if (npatches_ != patches_.size())
       return;
 
-    std::vector<float> fullfield(totlonlen_ * totlatlen_ * levlen_);
+    std::vector<float> fullfield(totlonlen() * totlatlen() * levlen());
 
-    int nextilon = 0;
-    int nextjlat = 0;
-
-    while (nextilon < totlonlen_ || nextjlat < totlatlen_) {
-      for (auto &patch : patches_) {
-        if (patch.ilonStart() == nextilon && patch.jlatStart() == nextjlat) {
-          for (int k = 0; k < patch.levlen(); ++k) {
-            for (int j = 0; j < patch.latlen(); ++j) {
-              for (int i = 0; i < patch.lonlen(); ++i) {
-                fullfield[k * totlonlen_ * totlatlen_ +
-                          (j + patch.jlatStart()) * totlonlen_ +
-                          (i + patch.ilonStart())] = patch(i, j, k);
-              }
-            }
-          }
-          nextilon += patch.lonlen();
-          if (nextilon == totlonlen_) {
-            nextjlat += patch.latlen();
-            if (nextjlat != totlatlen_)
-              nextilon = 0;
-          }
-          continue;
+    for (auto &patch : patches_) {
+      for (int j = 0; j < patch.latlen(); ++j) {
+        for (int i = 0; i < patch.lonlen(); ++i) {
+          fullfield[patch.lev() * totlonlen() * totlatlen() +
+                    (j + patch.jlatStart()) * totlonlen() +
+                    (i + patch.ilonStart())] = patch(i, j);
         }
+        //            }
+        //          }
+        //          nextilon += patch.lonlen();
+        //          if (nextilon == totlonlen_) {
+        //            nextjlat += patch.latlen();
+        //            if (nextjlat != totlatlen_)
+        //              nextilon = 0;
+        //          }
+        //          continue;
       }
     }
-    DomainConf domain{0, 0, totlonlen_, totlatlen_, levlen_, 0, 0};
-    FieldProp fieldProp = makeDomainFieldProp(domain);
-    netcdfDump(0, fullfield.data(), fieldProp, "consumll");
+    netcdfDumper.writeVar(fieldName_, fullfield.data());
+
+    patches_.clear();
   }
 
-private:
-  size_t npatches_, totlonlen_, totlatlen_, levlen_;
-  std::vector<SinglePatch> patches_;
+  size_t levlen() const;
+  size_t totlonlen() const;
+  size_t totlatlen() const;
 };
 
 class MsgRepo {
+  NetCDFDumper netcdfDumper_;
+  std::unordered_map<std::string, std::unique_ptr<DistributedField>> msgs_;
+
 public:
+  MsgRepo(const std::vector<std::string> &topics) : netcdfDumper_(topics) {
+    //    if (std::filesystem::exists(ncFilename + ".nc")) {
+    //      throw std::runtime_error("Output file " + ncFilename +
+    //                               ".nc can not be overwritten");
+    //    }
+  }
+  ~MsgRepo() {}
   const std::unique_ptr<DistributedField> &
   getDistField(const KeyMessage &keyMsg) {
     if (!msgs_.count(keyMsg.key)) {
-      msgs_.emplace(std::make_pair(keyMsg.key,
-                                   std::move(std::make_unique<DistributedField>(
-                                       keyMsg.npatches, keyMsg.totlonlen,
-                                       keyMsg.totlatlen, keyMsg.levlen))));
+      DomainConf domain{0, 0, keyMsg.totlonlen, keyMsg.totlatlen, keyMsg.levlen,
+                        0, 0};
+      msgs_.emplace(std::make_pair(
+          keyMsg.key,
+          std::make_unique<DistributedField>(std::string(keyMsg.key), domain,
+                                             keyMsg.npatches * keyMsg.levlen)));
     }
+    const auto &distField = msgs_.at(keyMsg.key);
+    if (keyMsg.levlen != distField->levlen()) {
+      throw std::runtime_error(
+          "Incompatible lev len of records of the same topic");
+    }
+    if (keyMsg.totlatlen != distField->totlatlen()) {
+      throw std::runtime_error(
+          "Incompatible totlanlen len of records of the same topic");
+    }
+    if (keyMsg.totlonlen != distField->totlonlen()) {
+      throw std::runtime_error(
+          "Incompatible totlonlen len of records of the same topic");
+    }
+
     return msgs_.at(keyMsg.key);
   }
 
-private:
-  std::unordered_map<std::string, std::unique_ptr<DistributedField>> msgs_;
+  NetCDFDumper &getNetcdfDumper();
 };
 
 void msg_consume(RdKafka::Message *message, MsgRepo &msgRepo) {
@@ -148,23 +168,40 @@ void msg_consume(RdKafka::Message *message, MsgRepo &msgRepo) {
     }
     KeyMessage key;
     std::memcpy(&key, message->key_pointer(), message->key_len());
-    std::cout << "Key: " << key.myrank << ":" << key.latlen << " " << key.lonlen
-              << " ; lon:" << key.ilon_start << ", lat:" << key.jlat_start
-              << std::endl;
-    if (verbosity >= 1) {
-      printf("%.*s\n", static_cast<int>(message->len()),
-             static_cast<const char *>(message->payload()));
+
+    if (key.actionType_ == ActionType::InitFile) {
+
+      std::string topic(key.key);
+      std::cout << "Received header from topic : " << topic << std::endl;
+      DomainConf domain{0, 0, key.totlonlen, key.totlatlen, key.levlen, 0, 0};
+
+      TopicHeader *topicHeader = static_cast<TopicHeader *>(message->payload());
+
+      std::string filename(topicHeader->filename);
+
+      filename.replace(filename.length() - 3, 3, "C.nc");
+      msgRepo.getNetcdfDumper().createFile(filename,
+                                           makeDomainField(topic, domain));
+    } else if (key.actionType_ == ActionType::CloseFile) {
+      std::string topic(key.key);
+      std::cout << "Received closing from topic : " << topic << std::endl;
+
+      DomainConf domain{0, 0, key.totlonlen, key.totlatlen, key.levlen, 0, 0};
+
+      TopicHeader *topicHeader = static_cast<TopicHeader *>(message->payload());
+
+      std::string filename(topicHeader->filename);
+
+      filename.replace(filename.length() - 3, 3, "C.nc");
+      msgRepo.getNetcdfDumper().closeFile(filename, topic);
+
+    } else {
+      const auto &field = msgRepo.getDistField(key);
+      field->insertPatch(key.ilon_start, key.jlat_start, key.lonlen, key.latlen,
+                         key.lev, static_cast<float *>(message->payload()));
+
+      field->writeIfComplete(msgRepo.getNetcdfDumper());
     }
-
-    const auto &field = msgRepo.getDistField(key);
-    field->insertPatch(key.ilon_start, key.jlat_start, key.lonlen, key.latlen,
-                       static_cast<float *>(message->payload()));
-
-    field->writeIfComplete();
-    DomainConf domain{0, 0, key.lonlen, key.latlen, key.levlen, 0, 0};
-    FieldProp fieldProp = makeDomainFieldProp(domain);
-    netcdfDump(key.myrank, static_cast<float *>(message->payload()), fieldProp,
-               "consum");
   } break;
 
   case RdKafka::ERR__PARTITION_EOF:
@@ -243,7 +280,7 @@ int main() {
     exit(1);
   }
 
-  MsgRepo msgRepo;
+  MsgRepo msgRepo(topics);
   /*
    * Consume messages
    */
@@ -254,3 +291,11 @@ int main() {
     delete msg;
   }
 }
+
+size_t DistributedField::levlen() const { return domain_.levels; }
+
+size_t DistributedField::totlonlen() const { return domain_.isize; }
+
+size_t DistributedField::totlatlen() const { return domain_.jsize; }
+
+NetCDFDumper &MsgRepo::getNetcdfDumper() { return netcdfDumper_; }

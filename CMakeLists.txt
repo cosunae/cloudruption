@@ -21,9 +21,9 @@ target_link_libraries(producer ${MPI_CXX_LIBRARIES})
 add_executable(consumer consumer.cpp ${COMMONSRC})
 target_include_directories(consumer SYSTEM PUBLIC ${netCDF_INCLUDE_DIR})
 target_include_directories(consumer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
-target_link_libraries(consumer ${netCDF_LIBRARIES})
-target_link_libraries(consumer ${RDKAFKA_LIBRARIES})
-
+target_link_libraries(consumer PRIVATE ${netCDF_LIBRARIES})
+target_link_libraries(consumer PRIVATE ${RDKAFKA_LIBRARIES})
+target_link_libraries(consumer PRIVATE "stdc++fs")
 #python bindings
 find_package(pybind11 CONFIG REQUIRED)
 

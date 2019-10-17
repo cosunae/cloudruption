@@ -35,7 +35,12 @@
 #define ERR(e)                                                                 \
   {                                                                            \
     printf("Error: %s\n", nc_strerror(e));                                     \
-    return 2;                                                                  \
+    return e;                                                                  \
+  }
+#define ERRC(e)                                                                \
+  {                                                                            \
+    printf("Error: %s\n", nc_strerror(e));                                     \
+    ierror = e;                                                                \
   }
 
 class ExampleEventCb : public RdKafka::EventCb {
@@ -100,6 +105,7 @@ void mpierror() { MPI_Abort(MPI_COMM_WORLD, -1); }
 
 class FieldHandler {
   const int mpirank_, mpisize_;
+  std::string filename_;
   GridConf gridconf_;
   DomainConf subdomainconf_;
   std::optional<FieldProp> globalFieldProp_;
@@ -110,46 +116,69 @@ class FieldHandler {
   float *fsubd_ = nullptr;
 
 public:
-  FieldHandler(int mpirank, int mpisize)
-      : mpirank_(mpirank), mpisize_(mpisize),
-        globalFieldProp_(makeGlobalFieldProp(gridconf_)) {
-    // domain decomposition as
-    // 0 1 2
-    // 3 4 5
+  FieldHandler(int mpirank, int mpisize, std::string filename)
+      : mpirank_(mpirank), mpisize_(mpisize), filename_(filename) {
 
-    float a = std::sqrt(mpisize);
-    for (int i = (int)a; i > 0; --i) {
-      if (mpisize % i == 0) {
-        gridconf_.nbx = i;
-        gridconf_.nby = mpisize / gridconf_.nbx;
-        break;
+    if (mpirank_ == 0) {
+
+      // domain decomposition as
+      // 0 1 2
+      // 3 4 5
+
+      float a = std::sqrt(mpisize);
+      for (int i = (int)a; i > 0; --i) {
+        if (mpisize % i == 0) {
+          gridconf_.nbx = i;
+          gridconf_.nby = mpisize / gridconf_.nbx;
+          break;
+        }
       }
-    }
 
-    if (gridconf_.nbx == -1 || gridconf_.nby == -1) {
-      std::cerr << "Error: could not find a valid domain decomposition"
-                << std::endl;
-      mpierror();
+      if (gridconf_.nbx == -1 || gridconf_.nby == -1) {
+        throw std::runtime_error(
+            "Error: could not find a valid domain decomposition");
+      }
+
+      int ierror;
+      int retval;
+      int ncid;
+      if ((retval = nc_open(filename_.c_str(), NC_NOWRITE, &ncid)))
+        ERRC(retval);
+
+      int latid, lonid, levid;
+      if ((retval = nc_inq_dimid(ncid, "latitude", &latid)))
+        ERRC(retval);
+
+      if ((retval = nc_inq_dimid(ncid, "longitude", &lonid)))
+        ERRC(retval);
+
+      if ((retval = nc_inq_dimid(ncid, "level", &levid)))
+        ERRC(retval);
+
+      if ((retval = nc_inq_dimlen(ncid, latid, &gridconf_.latlen)))
+        ERRC(retval)
+      if ((retval = nc_inq_dimlen(ncid, lonid, &gridconf_.lonlen)))
+        ERRC(retval)
+
+      if ((retval = nc_inq_dimlen(ncid, levid, &gridconf_.levlen)))
+        ERRC(retval)
+
+      gridconf_.isizepatch =
+          (gridconf_.lonlen + gridconf_.nbx - 1) / gridconf_.nbx;
+
+      gridconf_.jsizepatch =
+          (gridconf_.latlen + gridconf_.nby - 1) / gridconf_.nby;
+
+      if ((retval = nc_close(ncid)))
+        ERRC(retval);
     }
+    MPI_Bcast(&gridconf_, sizeof(GridConf) / sizeof(size_t), MPI_SIZE_T, 0,
+              MPI_COMM_WORLD);
+
+    subdomainconf_.levels = gridconf_.levlen;
+
     subdomainconf_.nx = mpirank_ % gridconf_.nbx;
     subdomainconf_.ny = mpirank_ / gridconf_.nbx;
-  }
-
-  int getMpiRank() const { return mpirank_; }
-  int getMpiSize() const { return mpisize_; }
-  std::optional<FieldProp> getGlobalFieldProp() const {
-    return globalFieldProp_;
-  }
-  std::optional<FieldProp> getDomainFieldProp() const {
-    return domainFieldProp_;
-  }
-  const DomainConf &getSubdomainconf() const { return subdomainconf_; }
-  const GridConf &getGridconf() const { return gridconf_; }
-
-  float *getSubdomainField() const { return fsubd_; }
-  void loadDomainConf() {
-    globalFieldProp_ = makeGlobalFieldProp(gridconf_);
-    subdomainconf_.levels = gridconf_.levlen;
 
     gridconf_.isizepatch =
         (gridconf_.lonlen + gridconf_.nbx - 1) / gridconf_.nbx;
@@ -163,9 +192,26 @@ public:
     subdomainconf_.jsize = std::min(gridconf_.jsizepatch,
                                     gridconf_.latlen - subdomainconf_.jstart);
 
+    globalFieldProp_ = makeGlobalFieldProp(gridconf_);
     domainFieldProp_ = makeDomainFieldProp(subdomainconf_);
     patchFieldProp_ = makePatchFieldProp(gridconf_);
+
+    if (mpirank_ == 0) {
+      size_t levelsize = gridconf_.latlen * gridconf_.lonlen * sizeof(float);
+      size_t fieldsize = levelsize * gridconf_.levlen;
+
+      fglob_ = (float *)malloc(fieldsize);
+    }
   }
+
+  int getMpiRank() const { return mpirank_; }
+  int getMpiSize() const { return mpisize_; }
+  FieldProp getGlobalFieldProp() const { return globalFieldProp_.value(); }
+  FieldProp getDomainFieldProp() const { return domainFieldProp_.value(); }
+  const DomainConf &getSubdomainconf() const { return subdomainconf_; }
+  const GridConf &getGridconf() const { return gridconf_; }
+
+  float *getSubdomainField() const { return fsubd_; }
 
   void printConf() {
     if (mpirank_ == 0) {
@@ -178,43 +224,16 @@ public:
   }
   int loadField(std::string field) {
     if (mpirank_ == 0) {
-      std::string filename =
-          "data/_grib2netcdf-atls13-a82bacafb5c306db76464bc7e824bb75-SfSU2a.nc";
       int retval;
       int ncid;
-      if ((retval = nc_open(filename.c_str(), NC_NOWRITE, &ncid)))
+      if ((retval = nc_open(filename_.c_str(), NC_NOWRITE, &ncid)))
         ERR(retval);
-
-      int latid, lonid, levid;
-      if ((retval = nc_inq_dimid(ncid, "latitude", &latid)))
-        ERR(retval);
-
-      if ((retval = nc_inq_dimid(ncid, "longitude", &lonid)))
-        ERR(retval);
-
-      if ((retval = nc_inq_dimid(ncid, "level", &levid)))
-        ERR(retval);
-
-      if ((retval = nc_inq_dimlen(ncid, latid, &gridconf_.latlen)))
-        ERR(retval)
-      if ((retval = nc_inq_dimlen(ncid, lonid, &gridconf_.lonlen)))
-        ERR(retval)
-
-      if ((retval = nc_inq_dimlen(ncid, levid, &gridconf_.levlen)))
-        ERR(retval)
-
-      subdomainconf_.levels = gridconf_.levlen;
 
       int uid;
       if ((retval = nc_inq_varid(ncid, field.c_str(), &uid)))
         ERR(retval);
 
       // only loaded for rank = 0
-      size_t levelsize = gridconf_.latlen * gridconf_.lonlen * sizeof(float);
-      size_t fieldsize = levelsize * gridconf_.levlen;
-
-      fglob_ = (float *)malloc(fieldsize);
-
       size_t startv[4] = {0, 0, 0, 0};
       size_t countv[4] = {1, gridconf_.levlen, gridconf_.latlen,
                           gridconf_.lonlen};
@@ -225,11 +244,11 @@ public:
       if ((retval = nc_close(ncid)))
         ERR(retval);
     }
-    MPI_Bcast(&gridconf_, sizeof(GridConf) / sizeof(size_t), MPI_SIZE_T, 0,
-              MPI_COMM_WORLD);
-    loadDomainConf();
+
     printConf();
     scatterSubdomains();
+
+    return 0;
   }
 
   void scatterSubdomains() {
@@ -316,16 +335,16 @@ class KafkaProducer {
   RdKafka::Conf *conf_;
   const int32_t partition_ = RdKafka::Topic::PARTITION_UA;
   const std::string broker_;
-  const FieldHandler &fHandler_;
+  FieldHandler &fHandler_;
 
   RdKafka::Producer *producer_;
   ExampleDeliveryReportCb ex_dr_cb_;
   ExampleEventCb ex_event_cb_;
 
 public:
-  KafkaProducer(const FieldHandler &fHandler)
+  KafkaProducer(FieldHandler &fieldHandler)
       : conf_(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL)),
-        broker_("localhost:9092"), fHandler_(fHandler) {
+        broker_("localhost:9092"), fHandler_(fieldHandler) {
     std::string errstr;
 
     /*
@@ -369,11 +388,13 @@ public:
     std::cout << "% Created producer " << producer_->name() << std::endl;
   }
 
-  KeyMessage getMsgKey(std::string fieldname, const size_t lev) const {
+  KeyMessage getMsgKey(ActionType actionType, std::string fieldname,
+                       const size_t lev) const {
     const auto &subdomainconf = fHandler_.getSubdomainconf();
     auto domainFieldProp = fHandler_.getDomainFieldProp();
     const auto &gridconf = fHandler_.getGridconf();
-    KeyMessage key{"u",
+    KeyMessage key{actionType,
+                   "",
                    fHandler_.getMpiSize(),
                    fHandler_.getMpiRank(),
                    subdomainconf.istart,
@@ -381,16 +402,71 @@ public:
                    lev,
                    0,
                    0,
-                   domainFieldProp->sizes_[0],
-                   domainFieldProp->sizes_[1],
-                   domainFieldProp->sizes_[2],
+                   domainFieldProp.sizes_[0],
+                   domainFieldProp.sizes_[1],
+                   domainFieldProp.sizes_[2],
                    gridconf.lonlen,
                    gridconf.latlen};
+    strcpy(key.key, fieldname.substr(0, 8).c_str());
     return key;
   }
 
+  void sendHeader(std::string filename, std::string fieldname) {
+    std::cout << "Sending header for topic: " << fieldname << std::endl;
+    auto key = getMsgKey(ActionType::InitFile, fieldname, 0);
+
+    TopicHeader headerData;
+    strcpy(
+        headerData.filename,
+        filename.substr(0, std::min((size_t)(256), filename.length())).c_str());
+
+    RdKafka::ErrorCode resp = producer_->produce(
+        fieldname, partition_,
+        RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
+        /* Value */
+        static_cast<void *>(&(headerData)), sizeof(headerData),
+        /* Key */
+        &key, sizeof(KeyMessage),
+        /* Timestamp (defaults to now) */
+        0, NULL);
+
+    if (resp != RdKafka::ERR_NO_ERROR) {
+      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) << std::endl;
+    } else {
+      std::cerr << "% Produced Header msg for filename " << filename
+                << std::endl;
+    }
+  }
+
+  void sendClose(std::string filename, std::string fieldname) {
+    std::cout << "Sending close for topic: " << fieldname << std::endl;
+    auto key = getMsgKey(ActionType::CloseFile, fieldname, 0);
+
+    TopicHeader headerData;
+    strcpy(
+        headerData.filename,
+        filename.substr(0, std::min((size_t)(256), filename.length())).c_str());
+
+    RdKafka::ErrorCode resp = producer_->produce(
+        fieldname, partition_,
+        RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
+        /* Value */
+        static_cast<void *>(&(headerData)), sizeof(headerData),
+        /* Key */
+        &key, sizeof(KeyMessage),
+        /* Timestamp (defaults to now) */
+        0, NULL);
+
+    if (resp != RdKafka::ERR_NO_ERROR) {
+      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) << std::endl;
+    } else {
+      std::cerr << "% Produced Header msg for filename " << filename
+                << std::endl;
+    }
+  }
+
   void produce(std::string fieldname, size_t lev) {
-    auto key = getMsgKey(fieldname, lev);
+    auto key = getMsgKey(ActionType::Data, fieldname, lev);
 
     for (int i = 0; i < fHandler_.getMpiSize(); ++i) {
       if (i == fHandler_.getMpiRank()) {
@@ -404,9 +480,9 @@ public:
             /* Value */
             static_cast<void *>(
                 &(fHandler_.getSubdomainField()[fHandler_.getDomainFieldProp()
-                                                    ->idx({0, 0, lev})])),
-            fHandler_.getDomainFieldProp()->getSizes()[0] *
-                fHandler_.getDomainFieldProp()->getSizes()[1] * sizeof(float),
+                                                    .idx({0, 0, lev})])),
+            fHandler_.getDomainFieldProp().getSizes()[0] *
+                fHandler_.getDomainFieldProp().getSizes()[1] * sizeof(float),
             /* Key */
             &key, sizeof(KeyMessage),
             /* Timestamp (defaults to now) */
@@ -445,14 +521,26 @@ int main(int argc, char **argv) {
   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpisize);
 
-  FieldHandler fieldHandler(myrank, mpisize);
-  KafkaProducer producer(fieldHandler);
+  auto files = config.getFiles();
 
-  for (auto fieldname : topics) {
-    fieldHandler.loadField(fieldname);
+  for (auto file : files) {
+    FieldHandler fieldHandler(myrank, mpisize, file);
 
-    for (size_t k = 0; k < fieldHandler.getGridconf().levlen; ++k) {
-      producer.produce(fieldname, k);
+    KafkaProducer producer(fieldHandler);
+
+    for (auto fieldname : topics) {
+      producer.sendHeader(file, fieldname);
+      fieldHandler.loadField(fieldname);
+
+      for (size_t k = 0; k < fieldHandler.getGridconf().levlen; ++k) {
+        producer.produce(fieldname, k);
+      }
+
+      // right now a single close signal from one mpi rank will close the file
+      // of the topic. therefore we need to synchronize all mpi ranks to make
+      // sure that
+      MPI_Barrier(MPI_COMM_WORLD);
+      producer.sendClose(file, fieldname);
     }
   }
 
