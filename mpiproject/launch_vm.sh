@@ -1,6 +1,6 @@
 #!/bin/bash
 
-gcloud compute instances create master worker1 --source-snapshot=mpi-cluster-ubuntu --machine-type=n1-standard-4  --zone=europe-west6-a
+gcloud compute instances create master worker1 --source-snapshot=mpi-cluster-ubuntu-2 --machine-type=n1-standard-4  --zone=europe-west6-a
 sleep 10
 ip1=`gcloud compute instances describe projects/mpi-kubeflow/zones/europe-west6-a/instances/master --format='get(networkInterfaces[0].accessConfigs[0].natIP)'`
 ip2=`gcloud compute instances describe projects/mpi-kubeflow/zones/europe-west6-a/instances/worker1 --format='get(networkInterfaces[0].accessConfigs[0].natIP)'`
