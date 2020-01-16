@@ -11,9 +11,9 @@ public:
 
   std::vector<std::string> getTopics() {
     nlohmann::json config;
-    std::ifstream fin("config.json");
+    std::ifstream fin(jsonConfigFile_);
     if (!fin.is_open()) {
-      throw std::runtime_error("cannot to open config file config.json");
+      throw std::runtime_error("cannot to open config file " + jsonConfigFile_);
     }
     fin >> config;
 
@@ -32,11 +32,26 @@ public:
     return topics;
   }
 
+  std::string getKafkaBroker() {
+    nlohmann::json config;
+    std::ifstream fin(jsonConfigFile_);
+    if (!fin.is_open()) {
+      throw std::runtime_error("cannot to open config file " + jsonConfigFile_);
+    }
+    fin >> config;
+
+    if (!config.count("files")) {
+      throw std::runtime_error("files not found in config");
+    }
+    std::string result = config["kafkaBroker"].get<std::string>();
+    return result;
+  }
+
   std::vector<std::string> getFiles() {
     nlohmann::json config;
-    std::ifstream fin("config.json");
+    std::ifstream fin(jsonConfigFile_);
     if (!fin.is_open()) {
-      throw std::runtime_error("cannot to open config file config.json");
+      throw std::runtime_error("cannot to open config file " + jsonConfigFile_);
     }
     fin >> config;
 
