@@ -40,10 +40,10 @@ public:
     }
     fin >> config;
 
-    if (!config.count("files")) {
-      throw std::runtime_error("files not found in config");
+    if (!config.count("kafkabroker")) {
+      throw std::runtime_error("kafkabroker not found in config");
     }
-    std::string result = config["kafkaBroker"].get<std::string>();
+    std::string result = config["kafkabroker"].get<std::string>();
     return result;
   }
 
