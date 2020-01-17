@@ -342,9 +342,9 @@ class KafkaProducer {
   ExampleEventCb ex_event_cb_;
 
 public:
-  KafkaProducer(FieldHandler &fieldHandler)
+  KafkaProducer(FieldHandler &fieldHandler, std::string broker = "localhost:9092")
       : conf_(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL)),
-        broker_("localhost:9092"), fHandler_(fieldHandler) {
+        broker_(broker), fHandler_(fieldHandler) {
     std::string errstr;
 
     /*
@@ -526,7 +526,7 @@ int main(int argc, char **argv) {
   for (auto file : files) {
     FieldHandler fieldHandler(myrank, mpisize, file);
 
-    KafkaProducer producer(fieldHandler);
+    KafkaProducer producer(fieldHandler, config.getKafkaBroker());
 
     for (auto fieldname : topics) {
       producer.sendHeader(file, fieldname);
