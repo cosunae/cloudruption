@@ -1,5 +1,6 @@
 import argparse
 import subprocess, sys
+import tempfile
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='run_producer')
@@ -8,8 +9,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    with open ('run_producer.sh', 'w') as rsh:
-      rsh.write('''\
+    bashfile = tempfile.NamedTemporaryFile('w')
+
+    bashfile.write('''\
 rm -rf gcloudcomm
 git clone https://github.com/cosunae/gcloudcomm.git
 cd gcloudcomm/ProducerConsumer/
@@ -26,11 +28,12 @@ make -j3
 cd ..
 ./build/producer
 ''' % args.kafkabroker)
+    bashfile.file.close()
 
-    cmd='scp ./run_producer.sh '+args.mpimaster+':~/'
+    cmd='scp '+bashfile.name  +' '+args.mpimaster+':~/run_producer.sh'
     res= subprocess.run([cmd], shell=True, check=True)
 
-    print("... transfer run_producer.sh to mpimaster [",args.mpimaster,"]")
+    print("... transfer "+bashfile.name+" to mpimaster [",args.mpimaster,"]")
     if res.returncode:
         sys.exit("Problem with scp to mpimaster")
 
@@ -38,6 +41,6 @@ cd ..
     res= subprocess.run([cmd], shell=True, check=True)
     print("... executing run_producer.sh in mpimaster [",args.mpimaster,"]")
     if res.returncode:
-        sys.exit("Problem with executing run_producer in mpimaster")
+        sys.exit("Problem with executing run_producer.sh in mpimaster")
 
 

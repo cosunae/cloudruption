@@ -231,11 +231,9 @@ int main() {
   std::string errstr;
   char errstrc[512];
 
-  std::string brokers = "localhost:9092";
-
   Config config;
   auto topics = config.getTopics();
-
+  std::string brokers = config.getKafkaBroker();
   /*
    * Create configuration objects
    */

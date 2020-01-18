@@ -1,3 +1,4 @@
+include (FindPackageHandleStandardArgs)
 find_path(RDKAFKA_INCLUDE_DIR rdkafka.h HINTS ${RDKAFKA_ROOT} PATH_SUFFIXES librdkafka)
 find_library(RDKAFKA_LIBRARY NAMES rdkafka)
 find_library(RDKAFKA_CPP_LIBRARY NAMES rdkafka++)
