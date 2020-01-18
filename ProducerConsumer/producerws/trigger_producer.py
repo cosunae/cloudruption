@@ -32,14 +32,14 @@ cd ..
     bashfile.file.close()
 
     cmd='scp '+bashfile.name  +' '+data.mpimaster+':~/run_producer.sh'
-    res= subprocess.run([cmd], shell=True, check=True)
+    res= subprocess.run([cmd], shell=True, check=True, timeout=5)
 
     print("... transfer "+bashfile.name+" to mpimaster [",data.mpimaster,"]")
     if res.returncode:
         sys.exit("Problem with scp to mpimaster")
 
     cmd='ssh '+data.mpimaster+' bash ~/run_producer.sh'
-    res= subprocess.run([cmd], shell=True, check=True)
+    res= subprocess.run([cmd], shell=True, check=True, timeout=5)
     print("... executing run_producer.sh in mpimaster [",data.mpimaster,"]")
     if res.returncode:
         sys.exit("Problem with executing run_producer.sh in mpimaster")
@@ -60,7 +60,6 @@ if __name__ == '__main__':
     data.kafkabroker=args.kafkabroker
     data.mpimaster=args.mpimaster
 
-    ex()
     app = connexion.FlaskApp(__name__, port=9090, specification_dir='swagger/')
     app.add_api('producer-api.yaml', arguments={'title': 'Hello World Example'})
     app.run()
