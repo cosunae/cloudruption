@@ -1,5 +1,5 @@
 {
-    "kafkabroker": "1.1.?.?:9999",
+    "kafkabroker": "localhost:9092",
     "files": [
         "/data/_grib2netcdf-atls19-a562cefde8a29a7288fa0b8b7f9413f7-u5kqTs.nc"
     ],
