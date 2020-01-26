@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(toy)
+include(FetchContent)
 set (CMAKE_CXX_STANDARD 17)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
@@ -12,9 +13,38 @@ if(ENABLE_MPI)
   find_package(MPI COMPONENTS CXX REQUIRED)
 endif()
 
+#FetchContent_Declare(pybind11
+#  URL https://github.com/pybind/pybind11/archive/v2.4.3.tar.gz
+#)
+FetchContent_Declare(
+  pybind11
+  GIT_REPOSITORY https://github.com/pybind/pybind11.git
+  GIT_TAG        v2.4.3
+)
+FetchContent_GetProperties(pybind11)
+if(NOT googletest_POPULATED)
+  FetchContent_Populate(pybind11)
+endif()
+
+#set(PYBIND11_PYTHON_VERSION 3.6)
+set(PYBIND11_CPP_STANDARD -std=c++17)
+add_subdirectory(${pybind11_SOURCE_DIR})
+
+
 find_package(netCDF REQUIRED)
 find_package(Rdkafka REQUIRED)
-set(COMMONSRC KeyMessage.h nctools.cpp nctools.h Field.cpp Field.h Grid.cpp Grid.h Config.h)
+set(COMMONSRC 
+    DistributedField.cpp 
+    DistributedField.h 
+    KeyMessage.h 
+    nctools.cpp 
+    nctools.h 
+    Field.cpp 
+    Field.h 
+    Grid.cpp 
+    Grid.h 
+    Config.h
+    SinglePatch.h)
 
 if(ENABLE_PRODUCER)
   add_executable(producer producer.cpp ${COMMONSRC})
@@ -29,34 +59,13 @@ if(ENABLE_PRODUCER)
 endif()
 
 add_executable(consumer consumer.cpp ${COMMONSRC})
+
 target_include_directories(consumer SYSTEM PUBLIC ${netCDF_INCLUDE_DIR})
 target_include_directories(consumer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
 target_link_libraries(consumer PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(consumer PRIVATE ${RDKAFKA_LIBRARIES})
 target_link_libraries(consumer PRIVATE "stdc++fs")
-#python bindings
-#find_package(pybind11 CONFIG REQUIRED)
 
-#MESSAGE( [MAIN] "Found pybind11 v${pybind11_VERSION}: ${pybind11_INCLUDE_DIR}")
-#MESSAGE( [Main] " pybind11_INCLUDE_DIR = ${pybind11_INCLUDE_DIR}")
-#MESSAGE( [Main] " pybind11_LIBRARIES = ${pybind11_LIBRARIES}")
-
-#execute_process(COMMAND python3-config --extension-suffix OUTPUT_VARIABLE python_suffix_f)
-#string(REPLACE ".so" "" python_suffix ${python_suffix_f})
-
-#set(python_libname key_message)#${python_suffix})
-
-#add_library(${python_libname} SHARED
-#	python/key_message.cpp
-#)
-
-#set_property(TARGET ${python_libname} PROPERTY POSITION_INDEPENDENT_CODE ON)
-
-#execute_process(COMMAND python3 -m pybind11 --includes OUTPUT_VARIABLE pybind_includes_str)
-#string (REPLACE " " ";" pybind_includes_t "${pybind_includes_str}")
-#string (REPLACE "-I" "" pybind_includes "${pybind_includes_t}")
-
-#set(pybind_includes ";${pybind_includes}")
-#target_include_directories(${python_libname} PRIVATE $<BUILD_INTERFACE:${pybind_includes}>)
+pybind11_add_module(fieldop fieldop.cpp DistributedField.cpp)
 
 #install(TARGETS ${python_libname} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)

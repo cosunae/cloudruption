@@ -14,3 +14,4 @@ struct DomainConf {
   size_t nx, ny;
   size_t isize, jsize, levels, istart, jstart;
 };
+

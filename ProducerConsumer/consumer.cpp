@@ -1,4 +1,5 @@
 #include "Config.h"
+#include "DistributedField.h"
 #include "Field.h"
 #include "KeyMessage.h"
 #include "nctools.h"
@@ -20,83 +21,6 @@ static int partition_cnt = 0;
 static bool exit_eof = false;
 static int eof_cnt = 0;
 static bool run = true;
-
-class SinglePatch {
-public:
-  SinglePatch(size_t ilonstart, size_t jlatstart, size_t lonlen, size_t latlen,
-              size_t lev, float *data)
-      : ilonstart_(ilonstart), jlatstart_(jlatstart), lonlen_(lonlen),
-        latlen_(latlen), lev_(lev) {
-    data_ = static_cast<float *>(malloc(lonlen * latlen * sizeof(float)));
-    memcpy(data_, data, lonlen * latlen * sizeof(float));
-  }
-  // TODO fix this
-  //  ~SinglePatch() { free(data_); }
-
-  size_t ilonStart() { return ilonstart_; }
-  size_t jlatStart() { return jlatstart_; }
-  size_t lonlen() { return lonlen_; }
-  size_t latlen() { return latlen_; }
-  size_t lev() { return lev_; }
-  float operator()(int i, int j) { return data_[j * lonlen_ + i]; }
-
-private:
-  size_t ilonstart_, jlatstart_;
-  size_t lonlen_, latlen_, lev_;
-
-  float *data_;
-};
-
-class DistributedField {
-  std::string fieldName_;
-
-  DomainConf domain_;
-  size_t npatches_;
-  std::vector<SinglePatch> patches_;
-
-public:
-  DistributedField(std::string fieldName, const DomainConf &domainConf,
-                   size_t npatches)
-      : fieldName_(fieldName), domain_(domainConf), npatches_(npatches) {}
-
-  void insertPatch(size_t ilonstart, size_t jlatstart, size_t lonlen,
-                   size_t latlen, size_t k, float *data) {
-    patches_.push_back(
-        std::move(SinglePatch{ilonstart, jlatstart, lonlen, latlen, k, data}));
-  }
-  void writeIfComplete(NetCDFDumper &netcdfDumper) {
-    if (npatches_ != patches_.size())
-      return;
-
-    std::vector<float> fullfield(totlonlen() * totlatlen() * levlen());
-
-    for (auto &patch : patches_) {
-      for (int j = 0; j < patch.latlen(); ++j) {
-        for (int i = 0; i < patch.lonlen(); ++i) {
-          fullfield[patch.lev() * totlonlen() * totlatlen() +
-                    (j + patch.jlatStart()) * totlonlen() +
-                    (i + patch.ilonStart())] = patch(i, j);
-        }
-        //            }
-        //          }
-        //          nextilon += patch.lonlen();
-        //          if (nextilon == totlonlen_) {
-        //            nextjlat += patch.latlen();
-        //            if (nextjlat != totlatlen_)
-        //              nextilon = 0;
-        //          }
-        //          continue;
-      }
-    }
-    netcdfDumper.writeVar(fieldName_, fullfield.data());
-
-    patches_.clear();
-  }
-
-  size_t levlen() const;
-  size_t totlonlen() const;
-  size_t totlatlen() const;
-};
 
 class MsgRepo {
   NetCDFDumper netcdfDumper_;
@@ -197,8 +121,10 @@ void msg_consume(RdKafka::Message *message, MsgRepo &msgRepo) {
 
     } else {
       const auto &field = msgRepo.getDistField(key);
-      field->insertPatch(key.ilon_start, key.jlat_start, key.lonlen, key.latlen,
-                         key.lev, static_cast<float *>(message->payload()));
+
+      field->insertPatch(SinglePatch(key.ilon_start, key.jlat_start, key.lonlen,
+                                     key.latlen, key.lev,
+                                     static_cast<float *>(message->payload())));
 
       field->writeIfComplete(msgRepo.getNetcdfDumper());
     }
@@ -289,11 +215,5 @@ int main() {
     delete msg;
   }
 }
-
-size_t DistributedField::levlen() const { return domain_.levels; }
-
-size_t DistributedField::totlonlen() const { return domain_.isize; }
-
-size_t DistributedField::totlatlen() const { return domain_.jsize; }
 
 NetCDFDumper &MsgRepo::getNetcdfDumper() { return netcdfDumper_; }

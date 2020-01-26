@@ -6,6 +6,7 @@ import numpy as np
 import string
 import matplotlib.pyplot as plt
 from enum import IntEnum
+import fieldop
 
 class ActionType(IntEnum):
     InitFile = 0
@@ -107,6 +108,16 @@ class DataRegistry:
                 return False
         return True
 
+    def gatherField(self):
+
+        for patch in self.dataRequests_["u"].patches_:
+
+        domain = field.DomainConf()
+        df = fieldop.DistributedField
+        for patch in self.dataRequests_["u"].patches_:
+
+        return
+
 def get_key(msg):
     c1 = struct.unpack('i8c2i3Q2f5Q', msg)
     stringlist=''.join([x.decode('utf-8') for x in c1[1:9]])
@@ -123,6 +134,7 @@ if __name__ == '__main__':
         reg.poll(1.0)
         if reg.complete():
             print("COMPLETE")
+            reg.gatherField()
             break
 
 
