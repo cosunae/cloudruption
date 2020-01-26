@@ -21,8 +21,8 @@ void DistributedField::gatherField(field3d &fullfield, int totalsize) {
   for (auto &patch : patches_) {
     for (int j = 0; j < patch.latlen(); ++j) {
       for (int i = 0; i < patch.lonlen(); ++i) {
-        fullfield(patch.lev(), (j + patch.jlatStart()),
-                  (i + patch.ilonStart())) = patch(i, j);
+        fullfield(i + patch.ilonStart(), j + patch.jlatStart(), patch.lev()) =
+            patch(i, j);
       }
     }
   }

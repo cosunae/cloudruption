@@ -4,6 +4,8 @@
 #include <pybind11/pybind11.h>
 #include <string>
 
+using namespace pybind11::literals;
+
 PYBIND11_MODULE(config, m) { pybind11::class_<DomainConf>(m, "DomainConf"); }
 
 PYBIND11_MODULE(fieldop, m) {
@@ -59,11 +61,8 @@ PYBIND11_MODULE(fieldop, m) {
             info.ndim != 3)
           throw std::runtime_error("Incompatible buffer format!");
 
-        auto v = new field3d(info.shape[0], info.shape[1], info.shape[2]);
-        // TODO we dont want to copy data
-        memcpy(v->data(), info.ptr,
-               sizeof(float) * (size_t)(v->isize() * v->jsize() * v->ksize()));
-        return v;
+        return field3d(info.shape[0], info.shape[1], info.shape[2],
+                       (float *)info.ptr);
       }))
       .def("__getitem__", [](const field3d &m, std::array<ssize_t, 3> i) {
         if (i[0] >= m.isize() || i[1] >= m.jsize() || i[2] >= m.ksize())
@@ -76,14 +75,16 @@ PYBIND11_MODULE(fieldop, m) {
       .def(pybind11::init([](size_t ilonstart, size_t jlatstart, size_t lonlen,
                              size_t latlen, size_t lev,
                              pybind11::buffer const b) {
-        pybind11::buffer_info info = b.request();
-        if (info.format != pybind11::format_descriptor<float>::format() ||
-            info.ndim != 2)
-          throw std::runtime_error("Incompatible buffer format!");
+             pybind11::buffer_info info = b.request();
+             if (info.format != pybind11::format_descriptor<float>::format() ||
+                 info.ndim != 2)
+               throw std::runtime_error("Incompatible buffer format!");
 
-        return SinglePatch(ilonstart, jlatstart, lonlen, latlen, lev,
-                           (float *)info.ptr);
-      }))
+             return SinglePatch(ilonstart, jlatstart, lonlen, latlen, lev,
+                                (float *)info.ptr);
+           }),
+           "ilonstart"_a, "jlatstart"_a, "lonlen"_a, "latlen"_a, "lev"_a,
+           "ptr"_a)
       .def("ilonstart", &SinglePatch::ilonStart)
       .def("jlatstart", &SinglePatch::jlatStart)
       .def("lonlen", &SinglePatch::lonlen)

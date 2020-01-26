@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdlib>
+#include <iostream>
 #include <string.h>
 
 class field3d {
@@ -14,12 +15,24 @@ public:
       : m_i(i), m_j(j), m_k(k), m_strides({i * j * k, k, k * j}) {
     data_ = static_cast<float *>(malloc(i * j * k * sizeof(float)));
   }
+  field3d(size_t i, size_t j, size_t k, float *data)
+      : m_i(i), m_j(j), m_k(k), m_strides({i * j * k, k, k * j}) {
+    data_ = data;
+  }
+
   field3d(size_t i, size_t j, size_t k, std::array<size_t, 3> strides)
       : m_i(i), m_j(j), m_k(k), m_strides(strides) {
     data_ = static_cast<float *>(malloc(i * j * k * sizeof(float)));
   }
 
   float &operator()(int i, int j, int k) {
+    if (k + j * m_strides[1] + i * m_strides[2] >= m_i * m_j * m_k) {
+      std::cout << "RRRRRRERROR i:" << i << " j:" << j << " k: " << k
+                << "m_i:" << m_i << " m_j:" << m_j << " m_k: " << m_k
+                << std::endl;
+      std::cout << "strides " << m_strides[1] << " " << m_strides[2]
+                << std::endl;
+    }
     return data_[k + j * m_strides[1] + i * m_strides[2]];
   }
   float operator()(int i, int j, int k) const {
@@ -34,20 +47,22 @@ public:
 class field2d {
   std::array<size_t, 2> m_strides;
   size_t m_i, m_j;
-  float *data_;
+  float *m_data;
 
 public:
   field2d(size_t i, size_t j) : m_i(i), m_j(j), m_strides({i * j, j}) {
-    data_ = static_cast<float *>(malloc(i * j * sizeof(float)));
+    m_data = static_cast<float *>(malloc(i * j * sizeof(float)));
   }
+  field2d(size_t i, size_t j, float *data)
+      : m_i(i), m_j(j), m_strides({i * j, j}), m_data(data) {}
   field2d(size_t i, size_t j, std::array<size_t, 2> strides)
       : m_i(i), m_j(j), m_strides(strides) {
-    data_ = static_cast<float *>(malloc(i * j * sizeof(float)));
+    m_data = static_cast<float *>(malloc(i * j * sizeof(float)));
   }
 
-  float &operator()(int i, int j) { return data_[j + i * m_strides[1]]; }
-  float operator()(int i, int j) const { return data_[j + i * m_strides[1]]; }
-  float *data() { return data_; }
+  float &operator()(int i, int j) { return m_data[j + i * m_strides[1]]; }
+  float operator()(int i, int j) const { return m_data[j + i * m_strides[1]]; }
+  float *data() { return m_data; }
   size_t isize() const { return m_i; }
   size_t jsize() const { return m_j; }
 };

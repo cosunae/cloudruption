@@ -1,6 +1,7 @@
 import unittest
 import fieldop
 import numpy as np
+import matplotlib.pyplot as plt
 
 class TestFieldOp(unittest.TestCase):
 
@@ -34,8 +35,8 @@ class TestFieldOp(unittest.TestCase):
         arr1= np.array([[1.0,1.1,1.2,1.3],[2.0,2.1,2.2,2.3]]).astype(np.float32)
         arr2= np.array([[3.0,3.1,3.2,3.3],[4.0,4.1,4.2,4.3]]).astype(np.float32)
 
-        field1 = fieldop.SinglePatch(0,0,2,4,1, arr1)
-        field2 = fieldop.SinglePatch(2,0,2,4,1, arr2)
+        field1 = fieldop.SinglePatch(0,0,2,4,0, arr1)
+        field2 = fieldop.SinglePatch(2,0,2,4,0, arr2)
 
         domain = fieldop.DomainConf(1,1,4,4,1,0,0)
         dfield = fieldop.DistributedField("u", domain, 2)
@@ -43,9 +44,12 @@ class TestFieldOp(unittest.TestCase):
         dfield.insertPatch(field1)
         dfield.insertPatch(field2)
 
-        gfield = fieldop.field3d(np.empty([2, 2, 1], dtype=np.float32))
+        garr = np.empty([4, 4, 1], dtype=np.float32)
+        gfield = fieldop.field3d(garr)
         dfield.gatherField(gfield, 4*4*1)
 
+        sol = np.array([[[1.0],[1.1],[1.2],[1.3]],[[2.0],[2.1],[2.2],[2.3]],[[3.0],[3.1],[3.2],[3.3]],[[4.0],[4.1],[4.2],[4.3]]]).astype(np.float32)
+        self.assertTrue(np.allclose(sol, garr, rtol=1e-5))
 
 if __name__ == '__main__':
     unittest.main()
