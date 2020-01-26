@@ -41,11 +41,7 @@ PYBIND11_MODULE(fieldop, m) {
         std::cout << "elem  " << info.shape[0] << " --- " << info.shape[1]
                   << " --- " << info.strides[1] << " oo " << info.strides[0]
                   << std::endl;
-        auto v = new field2d(info.shape[0], info.shape[1]);
-        // TODO we dont want to copy data
-        memcpy(v->data(), info.ptr,
-               sizeof(float) * (size_t)(v->isize() * v->jsize()));
-        return v;
+        return field2d(info.shape[0], info.shape[1], (float *)info.ptr);
       }))
       .def("__getitem__", [](const field2d &m, std::pair<ssize_t, ssize_t> i) {
         if (i.first >= m.isize() || i.second >= m.jsize())

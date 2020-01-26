@@ -5,6 +5,7 @@
 DistributedField::DistributedField(std::string fieldName,
                                    const DomainConf &domainConf,
                                    size_t npatches)
+    // TODO remove domain from here, it does not make sense and is not used
     : fieldName_(fieldName), domain_(domainConf), npatches_(npatches) {}
 
 void DistributedField::insertPatch(SinglePatch &&patch) {
