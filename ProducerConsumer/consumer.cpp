@@ -37,8 +37,8 @@ public:
   const std::unique_ptr<DistributedField> &
   getDistField(const KeyMessage &keyMsg) {
     if (!msgs_.count(keyMsg.key)) {
-      DomainConf domain{0, 0, keyMsg.totlonlen, keyMsg.totlatlen, keyMsg.levlen,
-                        0, 0};
+      DomainConf domain{keyMsg.totlonlen, keyMsg.totlatlen, keyMsg.levlen, 0,
+                        0};
       msgs_.emplace(std::make_pair(
           keyMsg.key,
           std::make_unique<DistributedField>(std::string(keyMsg.key), domain,
@@ -97,7 +97,7 @@ void msg_consume(RdKafka::Message *message, MsgRepo &msgRepo) {
 
       std::string topic(key.key);
       std::cout << "Received header from topic : " << topic << std::endl;
-      DomainConf domain{0, 0, key.totlonlen, key.totlatlen, key.levlen, 0, 0};
+      DomainConf domain{key.totlonlen, key.totlatlen, key.levlen, 0, 0};
 
       TopicHeader *topicHeader = static_cast<TopicHeader *>(message->payload());
 
@@ -110,7 +110,7 @@ void msg_consume(RdKafka::Message *message, MsgRepo &msgRepo) {
       std::string topic(key.key);
       std::cout << "Received closing from topic : " << topic << std::endl;
 
-      DomainConf domain{0, 0, key.totlonlen, key.totlatlen, key.levlen, 0, 0};
+      DomainConf domain{key.totlonlen, key.totlatlen, key.levlen, 0, 0};
 
       TopicHeader *topicHeader = static_cast<TopicHeader *>(message->payload());
 

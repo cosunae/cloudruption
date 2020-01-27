@@ -20,7 +20,7 @@ public:
   void insertPatch(SinglePatch &);
   void writeIfComplete(NetCDFDumper &netcdfDumper);
 
-  void gatherField(field3d &fullfield, int totalsize);
+  void gatherField(field3d &fullfield);
 
   size_t levlen() const;
   size_t totlonlen() const;

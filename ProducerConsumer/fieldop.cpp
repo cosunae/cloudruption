@@ -10,9 +10,7 @@ PYBIND11_MODULE(config, m) { pybind11::class_<DomainConf>(m, "DomainConf"); }
 
 PYBIND11_MODULE(fieldop, m) {
   pybind11::class_<DomainConf>(m, "DomainConf")
-      .def(pybind11::init<int, int, int, int, int, int, int>())
-      .def_readwrite("nx", &DomainConf::nx)
-      .def_readwrite("ny", &DomainConf::ny)
+      .def(pybind11::init<int, int, int, int, int>())
       .def_readwrite("isize", &DomainConf::isize)
       .def_readwrite("jsize", &DomainConf::jsize)
       .def_readwrite("levels", &DomainConf::levels)

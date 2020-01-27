@@ -16,9 +16,7 @@ void DistributedField::insertPatch(SinglePatch &patch) {
   patches_.push_back(patch);
 }
 
-void DistributedField::gatherField(field3d &fullfield, int totalsize) {
-  assert(totalsize == totlonlen() * totlatlen() * levlen());
-
+void DistributedField::gatherField(field3d &fullfield) {
   for (auto &patch : patches_) {
     for (int j = 0; j < patch.latlen(); ++j) {
       for (int i = 0; i < patch.lonlen(); ++i) {
@@ -35,7 +33,7 @@ void DistributedField::writeIfComplete(NetCDFDumper &netcdfDumper) {
 
   field3d fullfield(totlonlen(), totlatlen(), levlen());
 
-  gatherField(fullfield, totlonlen() * totlatlen() * levlen());
+  gatherField(fullfield);
   netcdfDumper.writeVar(fieldName_, fullfield.data());
 
   patches_.clear();
