@@ -1,32 +1,26 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
+*.pyc
+*.log
+*.old
 *.out
-*.app
+*.DS_Store
+*.~
+*~
+*.user
+*.project
+
+# Build directories
+build*/
+install*/
+
+# Custom ignores
+_local_*
+_local_/*
+
+# Ignore IDEs
+.idea
+.vscode/
+**/compile_commands.json
+.clangd/
+
+# Ignore python editable installs
+*.egg-info/
