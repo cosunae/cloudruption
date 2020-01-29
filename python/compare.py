@@ -41,7 +41,6 @@ class DataRequest:
     patches_: []
     npatches_: -1
     domain_ : None
-    gField_ : None
 
     def __init__(self, fieldname):
         self.fieldname_ = fieldname
@@ -53,10 +52,8 @@ class DataRequest:
         self.patches_.append(patch)
 
         if self.npatches_ == -1:
-            print("KK ", msgKey.npatches, patch.lonlen(), patch.latlen())
             self.npatches_ = msgKey.npatches
             self.domain_ = fieldop.DomainConf(msgKey.totlonlen, msgKey.totlatlen, msgKey.levlen)
-            self.gField_ = fieldop.field3d(self.domain_.isize, self.domain_.jsize, self.domain_.levels)
         #TODO check in the else the keymsg is compatible with others msgs
 
     def complete(self) -> bool:

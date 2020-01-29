@@ -25,9 +25,9 @@ class field3d {
 
 public:
   field3d(const BBox &bbox)
-      : field3d((bbox.limits_[0][1] - bbox.limits_[0][0]),
-                (bbox.limits_[1][1] - bbox.limits_[1][0]),
-                (bbox.limits_[2][1] - bbox.limits_[2][0])) {}
+      : field3d((bbox.limits_[0][1] - bbox.limits_[0][0] + 1),
+                (bbox.limits_[1][1] - bbox.limits_[1][0] + 1),
+                (bbox.limits_[2][1] - bbox.limits_[2][0] + 1)) {}
 
   field3d(size_t i, size_t j, size_t k)
       : m_i(i), m_j(j), m_k(k), m_strides({i * j * k, k, k * j}) {
