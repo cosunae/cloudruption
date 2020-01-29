@@ -11,7 +11,6 @@ import fieldop
 from netCDF4 import Dataset
 import time
 
-
 class ActionType(IntEnum):
     InitFile = 0
     Data = 1
@@ -41,25 +40,33 @@ class DataRequest:
     fieldname_: str
     patches_: []
     npatches_: -1
-    nlevels_: -1
+    domain_ : None
+    gField_ : None
 
     def __init__(self, fieldname):
         self.fieldname_ = fieldname
         self.patches_ = []
         self.npatches_ = -1
-        self.nlevels_ = -1
+        self.domain_ = None
 
-    def insert(self, patch, msgKey: MsgKey):
+    def insert(self, patch: fieldop.SinglePatch, msgKey: MsgKey):
         self.patches_.append(patch)
+
         if self.npatches_ == -1:
-            print("KK ", msgKey.npatches)
+            print("KK ", msgKey.npatches, patch.lonlen(), patch.latlen())
             self.npatches_ = msgKey.npatches
-            self.nlevels_ = msgKey.levlen
+            self.domain_ = fieldop.DomainConf(msgKey.totlonlen, msgKey.totlatlen, msgKey.levlen)
+            self.gnparray_ = np.empty([self.domain_.isize, self.domain_.jsize, self.domain_.levels]).astype(np.float32)
+            self.gField_ = fieldop.field3d(self.gnparray_)
+        #TODO check in the else the keymsg is compatible with others msgs
 
     def complete(self) -> bool:
         print("TEST ", len(self.patches_), self.npatches_)
-        return (len(self.patches_) == self.npatches_ * self.nlevels_) and len(self.patches_) != 0
+        return (len(self.patches_) == self.npatches_ * self.domain_.levels) and len(self.patches_) != 0
 
+class DataPool:
+    name: str
+    data: fieldop.SinglePatch
 
 @dataclass
 class DataRegistry:
@@ -78,17 +85,26 @@ class DataRegistry:
     def gatherField(self):
 
         for field in self.dataRequests_:
-            domain = fieldop.DomainConf(-1,-1, 0,0,0,0,0)
+            dataReq = self.dataRequests_[field]
+            df = fieldop.DistributedField(field, dataReq.domain_, dataReq.npatches_)
+            for patch in dataReq.patches_:
+                df.insertPatch(patch)
 
-            df = fieldop.DistributedField(field, domain, self.dataRequests_[field].npatches_)
-            df.
+#            datafield = datapool[field]
+#            df.gatherField(datafield.field_)
+            df.gatherField(dataReq.gField_)
 
-        #        for patch in self.dataRequests_["u"].patches_:
+            out_nc = Dataset('compare_2012.nc', 'w', format='NETCDF4')
+            out_nc.createDimension("lev", dataReq.domain_.levels)
+            out_nc.createDimension("lat", dataReq.domain_.jsize)
+            out_nc.createDimension("lon", dataReq.domain_.isize)
 
-        #        domain = field.DomainConf()
-        #        df = fieldop.DistributedField
-        #        for patch in self.dataRequests_["u"].patches_:
+            fvar = out_nc.createVariable(field,"f4",("lev","lat","lon",))
+            #print(fvar.shape, dataReq.gnparray_.shape)
 
+            tmp = np.transpose(dataReq.gnparray_, (2,1,0))
+            fvar[:,:,:] = tmp[:,:,:]
+            out_nc.close()
         return
     def subscribe(self, topics):
         for fieldname in topics:
@@ -137,11 +153,20 @@ class DataRegistryStreaming:
         if msgkey.key[0] in self.dataRequests_.keys():
             field = msgkey.key[0]
             print("ADD", field)
-
             reg.dataRequests_[field].insert(
-                fieldop.SinglePatch(msgkey.ilonstart, msgkey.jlatstart, msgkey.lonlen, msgkey.latlen, msgkey.level,
+                DataField(ilonstart, jlatstart, lonlen, latlen, level,
                                     np.reshape(al, (msgkey.lonlen, msgkey.latlen))), msgkey)
 
+
+class OutputDataRegistry:
+    pass
+
+class OutputDataRegistryFile(OutputDataRegistry):
+    def __init__(self, filename):
+        self.filename_ = filename
+
+#    def put(self, datafield: DataField):
+#        pass
 
 class DataRegistryFile(DataRegistry):
     def __init__(self, filename):
@@ -153,28 +178,27 @@ class DataRegistryFile(DataRegistry):
         DataRegistry.subscribe(self, topics)
         ncdfData = Dataset(self.filename_, "r")
         for fieldname in topics:
-            var = ncdfData[fieldname][:,:,:,0]
-            iwidth = int(var.shape[0] / self.npart_[0])
+            var = ncdfData[fieldname][0,:,:,:]
+            iwidth = int(var.shape[2] / self.npart_[0])
             jwidth = int(var.shape[1] / self.npart_[1])
             for ni in range(0,self.npart_[0]):
                 for nj in range(0,self.npart_[1]):
                     istart = ni*iwidth
                     jstart = nj*jwidth
-                    iend = min((ni+1)*iwidth, var.shape[0])
+                    iend = min((ni+1)*iwidth, var.shape[2])
                     jend = min((nj + 1) * jwidth, var.shape[1])
-                    npsubpatch = np.empty([(iend-istart), (jend-jstart)]).astype(np.float32)
-                    subpatch = var[istart:iend, jstart:jend,:]
+                    subpatch = var[:, jstart:jend, istart:iend]
 
-                    for k in range(0,var.shape[2]):
-                        for i in range(0,subpatch.shape[0]):
-                            for j in range(0, subpatch.shape[1]):
-                                npsubpatch[i,j] = subpatch[i,j,k]
+                    for k in range(0,var.shape[0]):
+                        npsubpatch = np.empty([(iend - istart), (jend - jstart)]).astype(np.float32)
 
-                        msgkey = MsgKey(1, fieldname, self.npart_[0]*self.npart_[1], 0, istart, jstart, k, 0, 0, iwidth, jwidth, var.shape[2], var.shape[0], var.shape[1])
+                        for j in range(0, subpatch.shape[1]):
+                            for i in range(0,subpatch.shape[2]):
+                                npsubpatch[i,j] = subpatch[k,j,i]
 
+                        msgkey = MsgKey(1, fieldname, self.npart_[0]*self.npart_[1], 0, istart, jstart, k, 0, 0, iwidth, jwidth, var.shape[0], var.shape[2], var.shape[1])
                         self.dataRequests_[fieldname].insert(
                             fieldop.SinglePatch(istart, jstart, iend-istart, jend-jstart, k, npsubpatch), msgkey)
-
 
     def poll(self, seconds):
         pass
@@ -182,6 +206,7 @@ class DataRegistryFile(DataRegistry):
 #            self.dataRequests_[fieldname] = DataRequest(fieldname)
 #        print("subscribing to ", topics)
 #        self.c_.subscribe(topics)
+
 
 
 def get_key(msg):
@@ -211,3 +236,9 @@ if __name__ == '__main__':
             print("COMPLETE")
             reg.gatherField()
             break
+
+#    if args.f:
+#        reg = OutputDataRegistryFile("ou_ncfile.nc")
+#    else:
+#        print("Data streaming not supported yet")
+

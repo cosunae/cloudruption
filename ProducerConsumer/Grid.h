@@ -11,5 +11,5 @@ struct GridConf {
 };
 
 struct DomainConf {
-  size_t isize, jsize, levels, istart, jstart;
+  size_t isize, jsize, levels;
 };

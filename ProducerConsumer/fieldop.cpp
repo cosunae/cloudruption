@@ -1,7 +1,9 @@
 #include "DistributedField.h"
 #include <array>
 #include <iostream>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <string>
 
 using namespace pybind11::literals;
@@ -10,12 +12,12 @@ PYBIND11_MODULE(config, m) { pybind11::class_<DomainConf>(m, "DomainConf"); }
 
 PYBIND11_MODULE(fieldop, m) {
   pybind11::class_<DomainConf>(m, "DomainConf")
-      .def(pybind11::init<int, int, int, int, int>())
+      .def(pybind11::init<int, int, int>())
       .def_readwrite("isize", &DomainConf::isize)
       .def_readwrite("jsize", &DomainConf::jsize)
-      .def_readwrite("levels", &DomainConf::levels)
-      .def_readwrite("istart", &DomainConf::istart)
-      .def_readwrite("jstart", &DomainConf::jstart);
+      .def_readwrite("levels", &DomainConf::levels);
+
+  pybind11::class_<BBox>(m, "BBox").def_readwrite("limits_", &BBox::limits_);
 
   pybind11::class_<DistributedField>(m, "DistributedField",
                                      pybind11::buffer_protocol())
@@ -23,7 +25,8 @@ PYBIND11_MODULE(fieldop, m) {
                           unsigned long int>())
       .def("insertPatch", (void (DistributedField::*)(SinglePatch &)) &
                               DistributedField::insertPatch)
-      .def("gatherField", &DistributedField::gatherField);
+      .def("gatherField", &DistributedField::gatherField)
+      .def("bboxPatches", &DistributedField::bboxPatches);
 
   pybind11::class_<field2d>(m, "field2d", pybind11::buffer_protocol())
       /// Construct from a buffer
@@ -41,10 +44,21 @@ PYBIND11_MODULE(fieldop, m) {
                   << std::endl;
         return field2d(info.shape[0], info.shape[1], (float *)info.ptr);
       }))
-      .def("__getitem__", [](const field2d &m, std::pair<ssize_t, ssize_t> i) {
-        if (i.first >= m.isize() || i.second >= m.jsize())
-          throw pybind11::index_error();
-        return m(i.first, i.second);
+      .def("__getitem__",
+           [](const field2d &m, std::pair<ssize_t, ssize_t> i) {
+             if (i.first >= m.isize() || i.second >= m.jsize())
+               throw pybind11::index_error();
+             return m(i.first, i.second);
+           })
+      .def_buffer([](field2d &m) -> pybind11::buffer_info {
+        return pybind11::buffer_info(
+            m.data(), /*Pointer to buffer*/ sizeof(float),
+            /*Size of one scalar*/ pybind11::format_descriptor<float>::format(),
+            /*Python struct-style format˓→descriptor*/ 2,
+            /*Number of dimensions*/ {m.isize(), m.jsize()}, /*Buffer
+                                                                dimensions*/
+            {sizeof(float) * m.jsize(),
+             /*Strides (in bytes) for each˓→index*/ sizeof(float)});
       });
 
   pybind11::class_<field3d>(m, "field3d", pybind11::buffer_protocol())
@@ -58,10 +72,21 @@ PYBIND11_MODULE(fieldop, m) {
         return field3d(info.shape[0], info.shape[1], info.shape[2],
                        (float *)info.ptr);
       }))
-      .def("__getitem__", [](const field3d &m, std::array<ssize_t, 3> i) {
-        if (i[0] >= m.isize() || i[1] >= m.jsize() || i[2] >= m.ksize())
-          throw pybind11::index_error();
-        return m(i[0], i[1], i[2]);
+      .def("__getitem__",
+           [](const field3d &m, ssize_t i, ssize_t j, ssize_t k) {
+             if (i >= m.isize() || j >= m.jsize() || k >= m.ksize())
+               throw pybind11::index_error();
+             return m(i, j, k);
+           })
+      .def_buffer([](field3d &m) -> pybind11::buffer_info {
+        return pybind11::buffer_info(
+            m.data(), /*Pointer to buffer*/ sizeof(float),
+            /*Size of one scalar*/ pybind11::format_descriptor<float>::format(),
+            /*Python struct-style format˓→descriptor*/ 3,
+            /*Number of dimensions*/ {m.isize(), m.jsize(), m.ksize()}, /*Buffer
+                                                              dimensions*/
+            {sizeof(float) * m.jsize() * m.ksize(), sizeof(float) * m.ksize(),
+             /*Strides (in bytes) for each˓→index*/ sizeof(float)});
       });
 
   pybind11::class_<SinglePatch>(m, "SinglePatch", pybind11::buffer_protocol())

@@ -17,14 +17,33 @@ void DistributedField::insertPatch(SinglePatch &patch) {
 }
 
 void DistributedField::gatherField(field3d &fullfield) {
+  std::cout << "Size [" << fullfield.isize() << "," << fullfield.jsize() << ","
+            << fullfield.ksize() << "]" << std::endl;
+  int cnt = 0;
   for (auto &patch : patches_) {
+    std::cout << "IN PATCH " << cnt << " -> [" << patch.lonlen() << ","
+              << patch.latlen() << "]" << patch(1, 1) << " ------ "
+              << patch.ilonStart() << "," << patch.jlatStart() << std::endl;
     for (int j = 0; j < patch.latlen(); ++j) {
       for (int i = 0; i < patch.lonlen(); ++i) {
         fullfield(i + patch.ilonStart(), j + patch.jlatStart(), patch.lev()) =
             patch(i, j);
       }
     }
+    std::cout << "FFFF " << fullfield(60, 30, 0) << " " << fullfield(0, 0, 0)
+              << std::endl;
+    cnt++;
   }
+  std::cout << "OUT " << std::endl;
+}
+
+BBox DistributedField::bboxPatches() const {
+  assert(patches_.size() > 0);
+  return std::accumulate(std::next(patches_.begin()), patches_.end(),
+                         patches_[0].bbox(),
+                         [](const BBox &box, const SinglePatch &sp1) {
+                           return sp1.bbox().boundingBox(box);
+                         });
 }
 
 void DistributedField::writeIfComplete(NetCDFDumper &netcdfDumper) {

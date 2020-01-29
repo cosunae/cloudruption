@@ -5,12 +5,30 @@
 #include <iostream>
 #include <string.h>
 
+struct BBox {
+  std::array<std::array<size_t, 2>, 3> limits_;
+  BBox boundingBox(const BBox &other) const {
+    return BBox{
+        {std::array<size_t, 2>{std::min(limits_[0][0], other.limits_[0][0]),
+                               std::max(limits_[0][1], other.limits_[0][1])},
+         std::array<size_t, 2>{std::min(limits_[1][0], other.limits_[1][0]),
+                               std::max(limits_[1][1], other.limits_[1][1])},
+         std::array<size_t, 2>{std::min(limits_[2][0], other.limits_[2][0]),
+                               std::max(limits_[2][1], other.limits_[2][1])}}};
+  }
+};
+
 class field3d {
   std::array<size_t, 3> m_strides;
   size_t m_i, m_j, m_k;
   float *data_;
 
 public:
+  field3d(const BBox &bbox)
+      : field3d((bbox.limits_[0][1] - bbox.limits_[0][0]),
+                (bbox.limits_[1][1] - bbox.limits_[1][0]),
+                (bbox.limits_[2][1] - bbox.limits_[2][0])) {}
+
   field3d(size_t i, size_t j, size_t k)
       : m_i(i), m_j(j), m_k(k), m_strides({i * j * k, k, k * j}) {
     data_ = static_cast<float *>(malloc(i * j * k * sizeof(float)));
@@ -62,7 +80,7 @@ public:
 
   float &operator()(int i, int j) { return m_data[j + i * m_strides[1]]; }
   float operator()(int i, int j) const { return m_data[j + i * m_strides[1]]; }
-  float *data() { return m_data; }
+  float *data() const { return m_data; }
   size_t isize() const { return m_i; }
   size_t jsize() const { return m_j; }
 };
@@ -71,7 +89,9 @@ class SinglePatch : public field2d {
 public:
   SinglePatch(size_t ilonstart, size_t jlatstart, size_t lonlen, size_t latlen,
               size_t lev, float *data)
-      : ilonstart_(ilonstart), jlatstart_(jlatstart), lev_(lev),
+      : bbox_{{std::array<size_t, 2>{{ilonstart, ilonstart + lonlen}},
+               std::array<size_t, 2>{{jlatstart, jlatstart + latlen}},
+               std::array<size_t, 2>{{0, lev}}}},
         field2d(lonlen, latlen) {
     // TODO this will create copies all the time, even from python
     memcpy(field2d::data(), data, lonlen * latlen * sizeof(float));
@@ -79,13 +99,13 @@ public:
   // TODO fix this
   //  ~SinglePatch() { free(data_); }
 
-  size_t ilonStart() { return ilonstart_; }
-  size_t jlatStart() { return jlatstart_; }
+  size_t ilonStart() { return bbox_.limits_[0][0]; }
+  size_t jlatStart() { return bbox_.limits_[1][0]; }
   size_t lonlen() { return isize(); }
   size_t latlen() { return jsize(); }
-  size_t lev() { return lev_; }
+  size_t lev() { return bbox_.limits_[2][1] - bbox_.limits_[2][0]; }
+  const BBox &bbox() const { return bbox_; }
 
 private:
-  size_t ilonstart_, jlatstart_;
-  size_t lev_;
+  BBox bbox_;
 };

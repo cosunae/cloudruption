@@ -16,6 +16,7 @@ public:
   DistributedField(std::string fieldName, const DomainConf &domainConf,
                    size_t npatches);
 
+  BBox bboxPatches() const;
   void insertPatch(SinglePatch &&);
   void insertPatch(SinglePatch &);
   void writeIfComplete(NetCDFDumper &netcdfDumper);
