@@ -72,12 +72,20 @@ PYBIND11_MODULE(fieldop, m) {
         return field3d(info.shape[0], info.shape[1], info.shape[2],
                        (float *)info.ptr);
       }))
+      .def(
+          pybind11::init([](const int sizei, const int sizej, const int sizek) {
+            return field3d(sizei, sizej, sizek);
+          }))
+      .def(pybind11::init([](const BBox box) { return field3d(box); }))
       .def("__getitem__",
            [](const field3d &m, ssize_t i, ssize_t j, ssize_t k) {
              if (i >= m.isize() || j >= m.jsize() || k >= m.ksize())
                throw pybind11::index_error();
              return m(i, j, k);
            })
+      .def("ksize", &field3d::ksize)
+      .def("jsize", &field3d::jsize)
+      .def("isize", &field3d::isize)
       .def_buffer([](field3d &m) -> pybind11::buffer_info {
         return pybind11::buffer_info(
             m.data(), /*Pointer to buffer*/ sizeof(float),

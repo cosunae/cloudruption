@@ -56,17 +56,12 @@ class DataRequest:
             print("KK ", msgKey.npatches, patch.lonlen(), patch.latlen())
             self.npatches_ = msgKey.npatches
             self.domain_ = fieldop.DomainConf(msgKey.totlonlen, msgKey.totlatlen, msgKey.levlen)
-            self.gnparray_ = np.empty([self.domain_.isize, self.domain_.jsize, self.domain_.levels]).astype(np.float32)
-            self.gField_ = fieldop.field3d(self.gnparray_)
+            self.gField_ = fieldop.field3d(self.domain_.isize, self.domain_.jsize, self.domain_.levels)
         #TODO check in the else the keymsg is compatible with others msgs
 
     def complete(self) -> bool:
         print("TEST ", len(self.patches_), self.npatches_)
         return (len(self.patches_) == self.npatches_ * self.domain_.levels) and len(self.patches_) != 0
-
-class DataPool:
-    name: str
-    data: fieldop.SinglePatch
 
 @dataclass
 class DataRegistry:
@@ -82,27 +77,31 @@ class DataRegistry:
                 return False
         return True
 
-    def gatherField(self):
+    def gatherField(self, datapool):
 
         for field in self.dataRequests_:
+
             dataReq = self.dataRequests_[field]
             df = fieldop.DistributedField(field, dataReq.domain_, dataReq.npatches_)
+
             for patch in dataReq.patches_:
                 df.insertPatch(patch)
 
-#            datafield = datapool[field]
-#            df.gatherField(datafield.field_)
-            df.gatherField(dataReq.gField_)
+            bbox = df.bboxPatches()
+            gfield = fieldop.field3d(bbox)
+            df.gatherField(gfield)
+            #TODO insert in datapool
 
             out_nc = Dataset('compare_2012.nc', 'w', format='NETCDF4')
-            out_nc.createDimension("lev", dataReq.domain_.levels)
-            out_nc.createDimension("lat", dataReq.domain_.jsize)
-            out_nc.createDimension("lon", dataReq.domain_.isize)
+            out_nc.createDimension("lev", gfield.ksize())
+            out_nc.createDimension("lat", gfield.jsize())
+            out_nc.createDimension("lon", gfield.isize())
 
             fvar = out_nc.createVariable(field,"f4",("lev","lat","lon",))
-            #print(fvar.shape, dataReq.gnparray_.shape)
 
-            tmp = np.transpose(dataReq.gnparray_, (2,1,0))
+            garray = np.array(gfield, copy=False)
+
+            tmp = np.transpose(garray, (2,1,0))
             fvar[:,:,:] = tmp[:,:,:]
             out_nc.close()
         return
@@ -230,11 +229,13 @@ if __name__ == '__main__':
 
     vert_prof = None
 
+
+    outDatapool = {}
     while True:
         reg.poll(1.0)
         if reg.complete():
             print("COMPLETE")
-            reg.gatherField()
+            reg.gatherField(outDatapool)
             break
 
 #    if args.f:
