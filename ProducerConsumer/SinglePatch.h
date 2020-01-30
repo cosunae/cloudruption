@@ -48,8 +48,6 @@ public:
       std::cout << "RRRRRRERROR i:" << i << " j:" << j << " k: " << k
                 << "m_i:" << m_i << " m_j:" << m_j << " m_k: " << m_k
                 << std::endl;
-      std::cout << "strides " << m_strides[1] << " " << m_strides[2]
-                << std::endl;
     }
     return data_[k + j * m_strides[1] + i * m_strides[2]];
   }

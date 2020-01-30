@@ -87,20 +87,8 @@ class DataRegistry:
             bbox = df.bboxPatches()
             gfield = fieldop.field3d(bbox)
             df.gatherField(gfield)
-            #TODO insert in datapool
+            datapool[field] = gfield
 
-            out_nc = Dataset('compare_2012.nc', 'w', format='NETCDF4')
-            out_nc.createDimension("lev", gfield.ksize())
-            out_nc.createDimension("lat", gfield.jsize())
-            out_nc.createDimension("lon", gfield.isize())
-
-            fvar = out_nc.createVariable(field,"f4",("lev","lat","lon",))
-
-            garray = np.array(gfield, copy=False)
-
-            tmp = np.transpose(garray, (2,1,0))
-            fvar[:,:,:] = tmp[:,:,:]
-            out_nc.close()
         return
     def subscribe(self, topics):
         for fieldname in topics:
@@ -132,13 +120,12 @@ class DataRegistryStreaming:
         msg = self.c_.poll(seconds)
 
         if msg is None:
-            print("cont")
             return -1
         if msg.error():
             print("Consumer error: {}".format(msg.error()))
+            sys.exit(1)
             return -1
 
-        print("NNN")
         dt = np.dtype('<f4')
         al = np.frombuffer(msg.value(), dtype=dt)
         msgkey = get_key(msg.key())
@@ -148,7 +135,6 @@ class DataRegistryStreaming:
 
         if msgkey.key[0] in self.dataRequests_.keys():
             field = msgkey.key[0]
-            print("ADD", field)
             reg.dataRequests_[field].insert(
                 DataField(ilonstart, jlatstart, lonlen, latlen, level,
                                     np.reshape(al, (msgkey.lonlen, msgkey.latlen))), msgkey)
@@ -158,11 +144,34 @@ class OutputDataRegistry:
     pass
 
 class OutputDataRegistryFile(OutputDataRegistry):
-    def __init__(self, filename):
+    def __init__(self, filename, datapool):
+        self.datapool_ = datapool
         self.filename_ = filename
 
-#    def put(self, datafield: DataField):
-#        pass
+    def sendData(self):
+        out_nc = Dataset('compare_2012.nc', 'w', format='NETCDF4')
+
+        domainconf = None
+        for fieldname in self.datapool_:
+            field = self.datapool_[fieldname]
+            if not domainconf:
+                out_nc.createDimension("lev", field.ksize())
+                out_nc.createDimension("lat", field.jsize())
+                out_nc.createDimension("lon", field.isize())
+                domainconf = [field.isize(), field.jsize(), field.ksize()]
+            else:
+                if not domainconf == [field.isize(), field.jsize(), field.ksize()]:
+                    print("different fields found with incompatible sizes in the same output data registry")
+                    sys.exit(1)
+
+
+            fvar = out_nc.createVariable(fieldname, "f4", ("lev", "lat", "lon",))
+
+            garray = np.array(field, copy=False)
+
+            tmp = np.transpose(garray, (2, 1, 0))
+            fvar[:, :, :] = tmp[:, :, :]
+        out_nc.close()
 
 class DataRegistryFile(DataRegistry):
     def __init__(self, filename):
@@ -198,10 +207,6 @@ class DataRegistryFile(DataRegistry):
 
     def poll(self, seconds):
         pass
-#        for fieldname in topics:
-#            self.dataRequests_[fieldname] = DataRequest(fieldname)
-#        print("subscribing to ", topics)
-#        self.c_.subscribe(topics)
 
 
 
@@ -235,8 +240,9 @@ if __name__ == '__main__':
             reg.gatherField(outDatapool)
             break
 
-#    if args.f:
-#        reg = OutputDataRegistryFile("ou_ncfile.nc")
-#    else:
-#        print("Data streaming not supported yet")
+    if args.f:
+        reg = OutputDataRegistryFile("ou_ncfile.nc", outDatapool)
+        reg.sendData()
+    else:
+        print("Data streaming not supported yet")
 
