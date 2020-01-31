@@ -16,6 +16,7 @@ struct BBox {
          std::array<size_t, 2>{std::min(limits_[2][0], other.limits_[2][0]),
                                std::max(limits_[2][1], other.limits_[2][1])}}};
   }
+  friend std::ostream &operator<<(std::ostream &os, const BBox &);
 };
 
 class field3d {
@@ -87,9 +88,9 @@ class SinglePatch : public field2d {
 public:
   SinglePatch(size_t ilonstart, size_t jlatstart, size_t lonlen, size_t latlen,
               size_t lev, float *data)
-      : bbox_{{std::array<size_t, 2>{{ilonstart, ilonstart + lonlen}},
-               std::array<size_t, 2>{{jlatstart, jlatstart + latlen}},
-               std::array<size_t, 2>{{0, lev}}}},
+      : bbox_{{std::array<size_t, 2>{{ilonstart, ilonstart + lonlen - 1}},
+               std::array<size_t, 2>{{jlatstart, jlatstart + latlen - 1}},
+               std::array<size_t, 2>{{lev, lev}}}},
         field2d(lonlen, latlen) {
     // TODO this will create copies all the time, even from python
     memcpy(field2d::data(), data, lonlen * latlen * sizeof(float));
@@ -101,7 +102,7 @@ public:
   size_t jlatStart() { return bbox_.limits_[1][0]; }
   size_t lonlen() { return isize(); }
   size_t latlen() { return jsize(); }
-  size_t lev() { return bbox_.limits_[2][1] - bbox_.limits_[2][0]; }
+  size_t lev() { return bbox_.limits_[2][0]; }
   const BBox &bbox() const { return bbox_; }
 
 private:

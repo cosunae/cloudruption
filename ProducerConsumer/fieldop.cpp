@@ -72,10 +72,18 @@ PYBIND11_MODULE(fieldop, m) {
           }))
       .def(pybind11::init([](const BBox box) { return field3d(box); }))
       .def("__getitem__",
-           [](const field3d &m, ssize_t i, ssize_t j, ssize_t k) {
-             if (i >= m.isize() || j >= m.jsize() || k >= m.ksize())
+           [](field3d &m, std::array<ssize_t, 3> pos) {
+             if (pos[0] >= m.isize() || pos[1] >= m.jsize() ||
+                 pos[2] >= m.ksize())
                throw pybind11::index_error();
-             return m(i, j, k);
+             return m(pos[0], pos[1], pos[2]);
+           })
+      .def("__setitem__",
+           [](field3d &m, std::array<ssize_t, 3> pos, float val) {
+             if (pos[0] >= m.isize() || pos[1] >= m.jsize() ||
+                 pos[2] >= m.ksize())
+               throw pybind11::index_error();
+             m(pos[0], pos[1], pos[2]) = val;
            })
       .def("ksize", &field3d::ksize)
       .def("jsize", &field3d::jsize)
@@ -116,5 +124,15 @@ PYBIND11_MODULE(fieldop, m) {
              if (i.first >= m.isize() || i.second >= m.jsize())
                throw pybind11::index_error();
              return m(i.first, i.second);
-           });
+           })
+      .def_buffer([](SinglePatch &m) -> pybind11::buffer_info {
+        return pybind11::buffer_info(
+            m.data(), /*Pointer to buffer*/ sizeof(float),
+            /*Size of one scalar*/ pybind11::format_descriptor<float>::format(),
+            /*Python struct-style format˓→descriptor*/ 2,
+            /*Number of dimensions*/ {m.isize(), m.jsize()}, /*Buffer
+                                                              dimensions*/
+            {sizeof(float) * m.jsize(),
+             /*Strides (in bytes) for each˓→index*/ sizeof(float)});
+      });
 }

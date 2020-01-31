@@ -4,6 +4,9 @@ import fieldop
 from confluent_kafka import Consumer, KafkaError
 from netCDF4 import Dataset
 import numpy as np
+import eccodes as ecc
+
+import matplotlib.pyplot as plt
 
 class ActionType(IntEnum):
     InitFile = 0
@@ -27,6 +30,22 @@ class MsgKey:
     levlen: int
     totlonlen: int
     totlatlen: int
+
+def plot2d(arr):
+    fig = plt.figure(figsize=(6, 3.2))
+
+    ax = fig.add_subplot(111)
+    ax.set_title('colorMap')
+    plt.imshow(arr)
+    ax.set_aspect('equal')
+
+    cax = fig.add_axes([0.12, 0.1, 0.78, 0.8])
+    cax.get_xaxis().set_visible(False)
+    cax.get_yaxis().set_visible(False)
+    cax.patch.set_alpha(0)
+    cax.set_frame_on(False)
+    plt.colorbar(orientation='vertical')
+    plt.show()
 
 
 @dataclass
@@ -52,6 +71,9 @@ class DataRequest:
 
     def complete(self) -> bool:
         print("TEST ", len(self.patches_), self.npatches_)
+        #Not a single patch was inserted
+        if self.npatches_ == -1:
+            return False
         return (len(self.patches_) == self.npatches_ * self.domain_.levels) and len(self.patches_) != 0
 
 @dataclass
@@ -81,6 +103,7 @@ class DataRegistry:
             bbox = df.bboxPatches()
             gfield = fieldop.field3d(bbox)
             df.gatherField(gfield)
+
             datapool[field] = gfield
 
         return
@@ -169,18 +192,29 @@ class OutputDataRegistryFile(OutputDataRegistry):
 
             garray = np.array(field, copy=False)
 
+
             tmp = np.transpose(garray, (2, 1, 0))
+
             fvar[:, :, :] = tmp[:, :, :]
+
         out_nc.close()
 
 class DataRegistryFile(DataRegistry):
-    def __init__(self, filename):
+    def __init__(self, format, filename):
+        self.format_ = format
         self.filename_ = filename
         self.npart_ = [2,3]
         DataRegistry.__init__(self)
 
     def subscribe(self, topics):
         DataRegistry.subscribe(self, topics)
+
+        if self.format_ == 'nc':
+            self.sendNetCDFData(topics)
+        else:
+            if self.format_ == 'grib':
+                self.sendGribData(topics)
+    def sendNetCDFData(self,topics):
         ncdfData = Dataset(self.filename_, "r")
         for fieldname in topics:
             var = ncdfData[fieldname][0,:,:,:]
@@ -204,6 +238,47 @@ class DataRegistryFile(DataRegistry):
                         msgkey = MsgKey(1, fieldname, self.npart_[0]*self.npart_[1], 0, istart, jstart, k, 0, 0, iwidth, jwidth, var.shape[0], var.shape[2], var.shape[1])
                         self.dataRequests_[fieldname].insert(
                             fieldop.SinglePatch(istart, jstart, iend-istart, jend-jstart, k, npsubpatch), msgkey)
+
+    def sendGribData(self,topics):
+
+        with ecc.GribFile(self.filename_) as grib:
+            for i in range(len(grib)):
+                msg = ecc.GribMessage(grib)
+                fieldname = msg["cfVarName"]
+                if fieldname in topics:
+                    ni = msg['Ni']
+                    nj = msg['Nj']
+
+                    arr2 = np.reshape(ecc.codes_get_values(msg.gid), (nj,ni)).astype(np.float32)
+
+#TODO super hack. Need to understand the layouts, or pass strides to SinglePatch
+                    var = np.empty([ni,nj]).astype(np.float32)
+                    var[:,:] = np.transpose(arr2[:,:],(1,0))
+
+                    lev = msg["bottomLevel"]
+
+#                    iwidth = int(var.shape[0] / self.npart_[0])
+#                    jwidth = int(var.shape[1] / self.npart_[1])
+#                    for nbi in range(0, self.npart_[0]):
+ #                       for nbj in range(0, self.npart_[1]):
+ #                           istart = nbi * iwidth
+ #                           jstart = nbj * jwidth
+ #                           iend = min((nbi + 1) * iwidth-1, nj)
+ #                           jend = min((nbj + 1) * jwidth-1, ni)
+ #                           subpatch = var[istart:iend, jstart:jend]
+
+#                            print("III", istart, jstart, iend, jend, iwidth, jwidth)
+#                            msgkey = MsgKey(1, fieldname, self.npart_[0] * self.npart_[1], 0, istart, jstart, lev, 0,
+#                                                0, iwidth, jwidth, 60, ni,nj)
+#                            self.dataRequests_[fieldname].insert(
+#                                    fieldop.SinglePatch(istart, jstart, iend - istart, jend - jstart, lev, subpatch),
+#                                    msgkey)
+
+                    msgkey = MsgKey(1, fieldname, 1, 0, 0,0, lev, 0, 0, ni,
+                                    ni, 60, ni, nj)
+
+                    self.dataRequests_[fieldname].insert(
+                        fieldop.SinglePatch(0, 0, ni, nj, lev, var), msgkey)
 
     def poll(self, seconds):
         pass

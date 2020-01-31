@@ -9,12 +9,20 @@ import dataregistry as dreg
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='consumer')
-    parser.add_argument('-f', help='grib/netcdf filename')
+    parser.add_argument('--file', required=True, help='grib/netcdf filename')
+    parser.add_argument('--format', help='grib or nc')
 
     args = parser.parse_args()
+    format = args.format
+    if not format:
+        format="grib"
 
-    if args.f:
-        reg = dreg.DataRegistryFile(args.f)
+    if format not in ("grib", "nc"):
+        print("invalid file format")
+        sys.exit(1)
+
+    if args.file:
+        reg = dreg.DataRegistryFile(format, args.file)
     else:
         reg = dreg.DataRegistryStreaming()
 
@@ -23,16 +31,16 @@ if __name__ == '__main__':
     vert_prof = None
 
 
-    outDatapool = {}
+    tmpDatapool = {}
     while True:
         reg.poll(1.0)
         if reg.complete():
             print("COMPLETE")
-            reg.gatherField(outDatapool)
+            reg.gatherField(tmpDatapool)
             break
 
-    if args.f:
-        reg = dreg.OutputDataRegistryFile("ou_ncfile.nc", outDatapool)
+    if args.file:
+        reg = dreg.OutputDataRegistryFile("ou_ncfile.nc", tmpDatapool)
         reg.sendData()
     else:
         print("Data streaming not supported yet")
