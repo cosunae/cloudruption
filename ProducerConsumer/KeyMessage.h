@@ -13,6 +13,7 @@ struct KeyMessage {
   float dlon, dlat;
   size_t lonlen, latlen, levlen;
   size_t totlonlen, totlatlen;
+  float longitudeOfFirstGridPoint, longitudeOfLastGridPoint, latitudeOfFirstGridPoint, latitudeOfLastGridPoint;
 };
 
 struct TopicHeader {
