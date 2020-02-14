@@ -107,7 +107,7 @@ class FieldHandler {
   const int mpirank_, mpisize_;
   std::string filename_;
   GridConf gridconf_;
-  DomainConf subdomainconf_;
+  SubDomainConf subdomainconf_;
   std::optional<FieldProp> globalFieldProp_;
   std::optional<FieldProp> domainFieldProp_;
   std::optional<FieldProp> patchFieldProp_;
@@ -117,19 +117,20 @@ class FieldHandler {
 
 public:
   FieldHandler(int mpirank, int mpisize, std::string filename)
-      : mpirank_(mpirank), mpisize_(mpisize), filename_(filename) {
+      : mpirank_(mpirank), mpisize_(mpisize), filename_(filename) {}
 
+  int setupGridConf(std::string field) {
     if (mpirank_ == 0) {
 
       // domain decomposition as
       // 0 1 2
       // 3 4 5
 
-      float a = std::sqrt(mpisize);
+      float a = std::sqrt(mpisize_);
       for (int i = (int)a; i > 0; --i) {
-        if (mpisize % i == 0) {
+        if (mpisize_ % i == 0) {
           gridconf_.nbx = i;
-          gridconf_.nby = mpisize / gridconf_.nbx;
+          gridconf_.nby = mpisize_ / gridconf_.nbx;
           break;
         }
       }
@@ -145,24 +146,30 @@ public:
       if ((retval = nc_open(filename_.c_str(), NC_NOWRITE, &ncid)))
         ERRC(retval);
 
-      int latid, lonid, levid;
-      if ((retval = nc_inq_dimid(ncid, "latitude", &latid)))
+      int vid;
+      if ((retval = nc_inq_varid(ncid, field.c_str(), &vid)))
+        ERR(retval);
+
+      int ndims;
+      if ((retval = nc_inq_varndims(ncid, vid, &ndims)))
         ERRC(retval);
 
-      if ((retval = nc_inq_dimid(ncid, "longitude", &lonid)))
+      if (ndims != 4)
+        throw std::runtime_error("Other than 3D fields not yet supported :" +
+                                 std::to_string(ndims));
+
+      int dims[4];
+      if ((retval = nc_inq_vardimid(ncid, vid, dims)))
         ERRC(retval);
 
-      if ((retval = nc_inq_dimid(ncid, "level", &levid)))
-        ERRC(retval);
-
-      if ((retval = nc_inq_dimlen(ncid, latid, &gridconf_.latlen)))
-        ERRC(retval)
-      if ((retval = nc_inq_dimlen(ncid, lonid, &gridconf_.lonlen)))
+      if ((retval = nc_inq_dimlen(ncid, dims[3], &gridconf_.lonlen)))
         ERRC(retval)
 
-      if ((retval = nc_inq_dimlen(ncid, levid, &gridconf_.levlen)))
+      if ((retval = nc_inq_dimlen(ncid, dims[2], &gridconf_.latlen)))
         ERRC(retval)
 
+      if ((retval = nc_inq_dimlen(ncid, dims[1], &gridconf_.levlen)))
+        ERRC(retval)
       gridconf_.isizepatch =
           (gridconf_.lonlen + gridconf_.nbx - 1) / gridconf_.nbx;
 
@@ -177,18 +184,18 @@ public:
 
     subdomainconf_.levels = gridconf_.levlen;
 
-    subdomainconf_.nx = mpirank_ % gridconf_.nbx;
-    subdomainconf_.ny = mpirank_ / gridconf_.nbx;
+    size_t nx = mpirank_ % gridconf_.nbx;
+    size_t ny = mpirank_ / gridconf_.nbx;
 
     gridconf_.isizepatch =
         (gridconf_.lonlen + gridconf_.nbx - 1) / gridconf_.nbx;
-    subdomainconf_.istart = subdomainconf_.nx * gridconf_.isizepatch;
+    subdomainconf_.istart = nx * gridconf_.isizepatch;
     subdomainconf_.isize = std::min(gridconf_.isizepatch,
                                     gridconf_.lonlen - subdomainconf_.istart);
 
     gridconf_.jsizepatch =
         (gridconf_.latlen + gridconf_.nby - 1) / gridconf_.nby;
-    subdomainconf_.jstart = subdomainconf_.ny * gridconf_.jsizepatch;
+    subdomainconf_.jstart = ny * gridconf_.jsizepatch;
     subdomainconf_.jsize = std::min(gridconf_.jsizepatch,
                                     gridconf_.latlen - subdomainconf_.jstart);
 
@@ -197,18 +204,22 @@ public:
     patchFieldProp_ = makePatchFieldProp(gridconf_);
 
     if (mpirank_ == 0) {
+      if (fglob_)
+        free(fglob_);
+
       size_t levelsize = gridconf_.latlen * gridconf_.lonlen * sizeof(float);
       size_t fieldsize = levelsize * gridconf_.levlen;
 
       fglob_ = (float *)malloc(fieldsize);
     }
+    return 0;
   }
 
   int getMpiRank() const { return mpirank_; }
   int getMpiSize() const { return mpisize_; }
   FieldProp getGlobalFieldProp() const { return globalFieldProp_.value(); }
   FieldProp getDomainFieldProp() const { return domainFieldProp_.value(); }
-  const DomainConf &getSubdomainconf() const { return subdomainconf_; }
+  const SubDomainConf &getSubdomainconf() const { return subdomainconf_; }
   const GridConf &getGridconf() const { return gridconf_; }
 
   float *getSubdomainField() const { return fsubd_; }
@@ -342,7 +353,8 @@ class KafkaProducer {
   ExampleEventCb ex_event_cb_;
 
 public:
-  KafkaProducer(FieldHandler &fieldHandler, std::string broker = "localhost:9092")
+  KafkaProducer(FieldHandler &fieldHandler,
+                std::string broker = "localhost:9092")
       : conf_(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL)),
         broker_(broker), fHandler_(fieldHandler) {
     std::string errstr;
@@ -413,7 +425,7 @@ public:
 
   void sendHeader(std::string filename, std::string fieldname) {
     std::cout << "Sending header for topic: " << fieldname << std::endl;
-    auto key = getMsgKey(ActionType::InitFile, fieldname, 0);
+    auto key = getMsgKey(ActionType::HeaderData, fieldname, -1);
 
     TopicHeader headerData;
     strcpy(
@@ -440,7 +452,7 @@ public:
 
   void sendClose(std::string filename, std::string fieldname) {
     std::cout << "Sending close for topic: " << fieldname << std::endl;
-    auto key = getMsgKey(ActionType::CloseFile, fieldname, 0);
+    auto key = getMsgKey(ActionType::EndData, fieldname, -2);
 
     TopicHeader headerData;
     strcpy(
@@ -529,6 +541,9 @@ int main(int argc, char **argv) {
     KafkaProducer producer(fieldHandler, config.getKafkaBroker());
 
     for (auto fieldname : topics) {
+      if (fieldHandler.setupGridConf(fieldname))
+        throw std::runtime_error("Error setting up grid");
+
       producer.sendHeader(file, fieldname);
       fieldHandler.loadField(fieldname);
 

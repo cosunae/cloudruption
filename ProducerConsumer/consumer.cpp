@@ -92,7 +92,7 @@ void msg_consume(RdKafka::Message *message, MsgRepo &msgRepo) {
     KeyMessage key;
     std::memcpy(&key, message->key_pointer(), message->key_len());
 
-    if (key.actionType_ == ActionType::InitFile) {
+    if (key.actionType_ == ActionType::HeaderData) {
 
       std::string topic(key.key);
       std::cout << "Received header from topic : " << topic << std::endl;
@@ -105,7 +105,7 @@ void msg_consume(RdKafka::Message *message, MsgRepo &msgRepo) {
       filename.replace(filename.length() - 3, 3, "C.nc");
       msgRepo.getNetcdfDumper().createFile(filename,
                                            makeDomainField(topic, domain));
-    } else if (key.actionType_ == ActionType::CloseFile) {
+    } else if (key.actionType_ == ActionType::EndData) {
       std::string topic(key.key);
       std::cout << "Received closing from topic : " << topic << std::endl;
 

@@ -61,7 +61,7 @@ if __name__ == '__main__':
     else:
         reg = dreg.DataRegistryStreaming()
 
-    reg.subscribe(["q","qc","qi", "pp", "t" ])
+    reg.subscribe(["QV","QC","QI", "PP", "T" ])
 
     tmpDatapool = {}
     while True:
@@ -70,12 +70,12 @@ if __name__ == '__main__':
             print("COMPLETE")
             reg.gatherField(tmpDatapool)
 
-            qv = np.array(tmpDatapool['q'], copy=False)
-            qc = np.array(tmpDatapool['qc'], copy=False)
-            qi = np.array(tmpDatapool['qi'], copy=False)
-            t = np.array(tmpDatapool['t'], copy=False)
+            qv = np.array(tmpDatapool['QV'], copy=False)
+            qc = np.array(tmpDatapool['QC'], copy=False)
+            qi = np.array(tmpDatapool['QI'], copy=False)
+            t = np.array(tmpDatapool['T'], copy=False)
 
-            pp = np.array(tmpDatapool['pp'], copy=False)
+            pp = np.array(tmpDatapool['PP'], copy=False)
 
             # DO NOT REPORT THIS... COMPILATION TIME IS INCLUDED IN THE EXECUTION TIME!
             start = time.time()

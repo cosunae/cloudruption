@@ -1,9 +1,11 @@
+import struct
 from enum import IntEnum
 
 import eccodes as ecc
 import fieldop
 import matplotlib.pyplot as plt
 import numpy as np
+import parseGrib as pgrib
 from confluent_kafka import Consumer, KafkaError
 from dataclasses import dataclass
 from netCDF4 import Dataset
@@ -11,10 +13,9 @@ from values import undef
 
 
 class ActionType(IntEnum):
-    InitFile = 0
+    HeaderData = 0
     Data = 1
-    CloseFile = 2
-
+    EndData = 2
 
 @dataclass
 class MsgKey:
@@ -59,32 +60,42 @@ def plot2d(arr):
 class DataRequest:
     fieldname_: str
     patches_: []
-    npatches_: -1
+    npatches_: None
     domain_: None
-    nlevels_ : None
+    nlevels_: None
 
     def __init__(self, fieldname):
         self.fieldname_ = fieldname
         self.patches_ = []
-        self.npatches_ = -1
+        self.npatches_ = None
         self.domain_ = None
+
+    def fillHeader(self, msgkey: MsgKey):
+        self.setNLevels(msgkey.levlen)
 
     def insert(self, patch: fieldop.SinglePatch, msgKey: MsgKey):
         self.patches_.append(patch)
 
-        if self.npatches_ == -1:
+        if not self.npatches_:
             self.npatches_ = msgKey.npatches
-            self.domain_ = fieldop.DomainConf(msgKey.totlonlen, msgKey.totlatlen, -1)
+            if self.domain_:
+                self.domain_.isize = msgKey.totlonlen
+                self.domain_.jsize = msgKey.totlatlen
+            else:
+                self.domain_ = fieldop.DomainConf(msgKey.totlonlen, msgKey.totlatlen, -1)
         # TODO check in the else the keymsg is compatible with others msgs
 
     def setNLevels(self, nlevels):
         self.nlevels_ = nlevels
-        self.domain_.levels = nlevels
+        if not self.domain_:
+            self.domain_ = fieldop.DomainConf(0, 0, 0)
+        else:
+            self.domain_ = fieldop.DomainConf(0, 0, nlevels)
 
     def complete(self) -> bool:
-        print("TEST ",  self.fieldname_, len(self.patches_), self.npatches_)
+        print("TEST ", self.fieldname_, len(self.patches_), self.npatches_)
         # Not a single patch was inserted
-        if self.npatches_ == -1:
+        if not self.npatches_ or not self.nlevels_:
             return False
         return (len(self.patches_) == self.npatches_ * self.nlevels_) and len(self.patches_) != 0
 
@@ -105,6 +116,7 @@ class DataRegistry:
     def gatherField(self, datapool):
 
         for field in self.dataRequests_:
+            print("GATHERING ", field)
 
             dataReq = self.dataRequests_[field]
             df = fieldop.DistributedField(field, dataReq.domain_, dataReq.npatches_)
@@ -127,19 +139,19 @@ class DataRegistry:
             self.dataRequests_[fieldname] = DataRequest(fieldname)
 
     def appendTopic(self, topic):
-        print(topic, self.dataRequests_.keys())
         if topic not in self.dataRequests_.keys():
-            print("INS ", topic)
             self.dataRequests_[topic] = DataRequest(topic)
+
 
 def get_key(msg):
     c1 = struct.unpack('i8c2i3Q2f5Q4f', msg)
     stringlist = ''.join([x.decode('utf-8') for x in c1[1:9]])
     allargs = list(c1[0:1]) + [stringlist] + list(c1[9:])
-    return MsgKey(*allargs)
+    key = MsgKey(*allargs)
+    return key
 
 
-class DataRegistryStreaming:
+class DataRegistryStreaming(DataRegistry):
     c_ = Consumer({
         'bootstrap.servers': 'localhost:9092',
         'group.id': 'group1',
@@ -152,6 +164,7 @@ class DataRegistryStreaming:
             'group.id': 'group1',
             'auto.offset.reset': 'earliest'
         })
+        DataRegistry.__init__(self)
 
     def __del__(self):
         self.c_.close()
@@ -173,16 +186,22 @@ class DataRegistryStreaming:
 
         dt = np.dtype('<f4')
         al = np.frombuffer(msg.value(), dtype=dt)
-        msgkey = get_key(msg.key())
 
-        if msgkey.action_type != int(ActionType.Data):
-            return
+        msKey: MsgKey = get_key(msg.key())
+        print(msKey)
 
-        if msgkey.key[0] in self.dataRequests_.keys():
-            field = msgkey.key[0]
-            reg.dataRequests_[field].insert(
-                DataField(ilonstart, jlatstart, lonlen, latlen, level,
-                          np.reshape(al, (msgkey.lonlen, msgkey.latlen))), msgkey)
+        if msKey.key[0] in self.dataRequests_.keys():
+            field = msKey.key[0]
+
+            if msKey.action_type == int(ActionType.HeaderData):
+                self.dataRequests_[field].fillHeader(msKey)
+
+            if msKey.action_type != int(ActionType.Data):
+                return
+
+            self.dataRequests_[field].insert(
+                fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen, msKey.level,
+                                    np.reshape(al, (msKey.lonlen, msKey.latlen))), msKey)
 
 
 class OutputDataRegistry:
@@ -195,7 +214,7 @@ class OutputDataRegistryFile(OutputDataRegistry):
         self.filename_ = filename
 
     def sendData(self):
-        out_nc = Dataset('compare_2012.nc', 'w', format='NETCDF4')
+        out_nc = Dataset(self.filename_, 'w', format='NETCDF4')
 
         londims = {}
         latdims = {}
@@ -204,16 +223,18 @@ class OutputDataRegistryFile(OutputDataRegistry):
         for fieldname in self.datapool_:
             field = self.datapool_[fieldname]
             if field.ksize() not in levdims.keys():
-                levdims[field.ksize()] = "lev"+str(len(levdims))
+                levdims[field.ksize()] = "lev" + str(len(levdims))
                 out_nc.createDimension(levdims[field.ksize()], field.ksize())
             if field.isize() not in londims.keys():
-                londims[field.isize()] = "lon"+str(len(londims))
+                londims[field.isize()] = "lon" + str(len(londims))
                 out_nc.createDimension(londims[field.isize()], field.isize())
             if field.jsize() not in latdims.keys():
-                latdims[field.jsize()] = "lat"+str(len(latdims))
+                latdims[field.jsize()] = "lat" + str(len(latdims))
                 out_nc.createDimension(latdims[field.jsize()], field.jsize())
 
-            fvar = out_nc.createVariable(fieldname, "f4", (levdims[field.ksize()], latdims[field.jsize()], londims[field.isize()],), fill_value=-undef)
+            fvar = out_nc.createVariable(fieldname, "f4",
+                                         (levdims[field.ksize()], latdims[field.jsize()], londims[field.isize()],),
+                                         fill_value=-undef)
             fvar.missing_value = -undef
             garray = np.array(field, copy=False)
 
@@ -269,6 +290,52 @@ class DataRegistryFile(DataRegistry):
                         self.dataRequests_[fieldname].insert(
                             fieldop.SinglePatch(istart, jstart, iend - istart, jend - jstart, k, npsubpatch), msgkey)
 
+    def getGribFieldname(self, msg):
+
+        gribDict = pgrib.gribParams
+        candidateFields = []
+        for field in gribDict:
+            params = gribDict[field]
+            if (params["table"] == msg["table2Version"]) and (
+                    params["parameter"] == msg["indicatorOfParameter"]):
+                candidateFields.append(field)
+
+        if len(candidateFields) == 0:
+            return None
+        elif len(candidateFields) == 1:
+            return candidateFields[0]
+        else:
+            candidateFieldsO = candidateFields.copy()
+            candidateFields=[]
+            for field in candidateFieldsO:
+                params = gribDict[field]
+                if (not "typeLevel" in params and msg["indicatorOfTypeOfLevel"] == "ml"):
+                    candidateFields.append(field)
+                elif ("typeLevel" in params and params["typeLevel"] == pgrib.typeLevelParams[msg["typeOfLevel"]]):
+                    candidateFields.append(field)
+            if len(candidateFields) == 0:
+                return None
+            elif len(candidateFields) == 1:
+                return candidateFields[0]
+            else:
+                candidateFieldsO=candidateFields.copy()
+                candidateFields = []
+                for field in candidateFieldsO:
+                    params = gribDict[field]
+                    if (not "timeRangeType" in params and msg["timeRangeIndicator"] == 0):
+
+                        candidateFields.append(field)
+                    elif ("timeRangeType" in params and params["timeRangeType"] == msg["timeRangeIndicator"]):
+                        candidateFields.append(field)
+                if len(candidateFields) == 0:
+                    return None
+                elif len(candidateFields) == 1:
+                    return candidateFields[0]
+                else:
+                    print("WARNING NOT YET SP", len(candidateFields), candidateFields)
+
+        return None
+
     def sendGribData(self, topics):
 
         with ecc.GribFile(self.filename_) as grib:
@@ -276,13 +343,16 @@ class DataRegistryFile(DataRegistry):
             for i in range(len(grib)):
                 msg = ecc.GribMessage(grib)
 
-#                print(msg.keys())
-                fieldname = msg["cfVarName"]
-                #                print(fieldname)
+                #print(msg.keys())
+                fieldname = self.getGribFieldname(msg)
+                if not fieldname:
+                    print('WARNING: found a grib field with no match in table : ', msg['cfVarName'],
+                          msg['table2Version'], msg['indicatorOfParameter'], msg['indicatorOfTypeOfLevel'])
+                    continue
                 if fieldname in topics or 'all' in topics:
                     # Hack I dont know why t has 60 levels (in layer) plus [0,0]
-                    if msg["bottomLevel"] == 0 and msg["topLevel"] == 0:
-                        continue
+                    #                    if msg["bottomLevel"] == 0 and msg["topLevel"] == 0:
+                    #                        continue
 
                     if fieldname not in nlevels.keys():
                         nlevels[fieldname] = 0
@@ -292,10 +362,11 @@ class DataRegistryFile(DataRegistry):
                     if 'all' in topics:
                         self.appendTopic(fieldname)
 
-                    print(msg["gridDefinition"], msg["gridType"], msg["gridDefinitionTemplateNumber"],
-                          msg["gridDefinitionDescription"], msg["latitudeOfFirstGridPoint"], msg["cfVarName"],
-                          msg["latitudeOfLastGridPoint"], msg["Ni"], msg["Nj"], msg["GRIBEditionNumber"],
-                          msg['paramId'], msg['bottomLevel'], msg['topLevel'], msg['table2Version'], msg['indicatorOfParameter'])
+                    #                    print(msg["gridDefinition"], msg["gridType"], msg["gridDefinitionTemplateNumber"],
+                    #                          msg["gridDefinitionDescription"], msg["latitudeOfFirstGridPoint"], msg["cfVarName"],
+                    #                          msg["latitudeOfLastGridPoint"], msg["Ni"], msg["Nj"], msg["GRIBEditionNumber"],
+                    #                          msg['paramId'], msg['bottomLevel'], msg['topLevel'], msg['table2Version'],
+                    #                          msg['indicatorOfParameter'], msg['indicatorOfTypeOfLevel'])
 
                     ni = msg['Ni']
                     nj = msg['Nj']
@@ -328,11 +399,10 @@ class DataRegistryFile(DataRegistry):
                     msgkey = MsgKey(1, fieldname, 1, 0, 0, 0, lev, 0, 0, ni,
                                     ni, 60, ni, nj, msg["longitudeOfFirstGridPoint"], msg["longitudeOfLastGridPoint"],
                                     msg["latitudeOfFirstGridPoint"], msg["latitudeOfLastGridPoint"], )
-                    print("Inserting")
                     self.dataRequests_[fieldname].insert(
                         fieldop.SinglePatch(0, 0, ni, nj, lev, var), msgkey)
 
-            #This is the equivalent to sending the header
+            # This is the equivalent to sending the header
             for field in nlevels:
                 self.dataRequests_[field].setNLevels(nlevels[field])
 

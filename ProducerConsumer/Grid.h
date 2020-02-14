@@ -13,3 +13,7 @@ struct GridConf {
 struct DomainConf {
   size_t isize, jsize, levels;
 };
+
+struct SubDomainConf : public DomainConf {
+  size_t istart, jstart;
+};

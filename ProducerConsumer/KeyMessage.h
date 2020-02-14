@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <string>
 
-enum ActionType { InitFile = 0, Data, CloseFile };
+enum ActionType { HeaderData, Data, EndData };
 
 struct KeyMessage {
   int actionType_;
@@ -13,7 +13,8 @@ struct KeyMessage {
   float dlon, dlat;
   size_t lonlen, latlen, levlen;
   size_t totlonlen, totlatlen;
-  float longitudeOfFirstGridPoint, longitudeOfLastGridPoint, latitudeOfFirstGridPoint, latitudeOfLastGridPoint;
+  float longitudeOfFirstGridPoint, longitudeOfLastGridPoint,
+      latitudeOfFirstGridPoint, latitudeOfLastGridPoint;
 };
 
 struct TopicHeader {

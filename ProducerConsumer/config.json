@@ -1,10 +1,10 @@
 {
     "kafkabroker": "localhost:9092",
     "files": [
-        "/data/_grib2netcdf-atls19-a562cefde8a29a7288fa0b8b7f9413f7-u5kqTs.nc"
+        "/data/cosmo-7/laf2018020200.nc"
     ],
     "topics": [
-        "u",
-        "v"
+        "U",
+        "V"
     ]
 }
