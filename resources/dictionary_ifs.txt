@@ -1,0 +1,1051 @@
+! Dictionary: specification of field properties for fieldextra (v11.4 upwards)
+!-----------------------------------------------------------------------------------------------------------------------
+! Within fieldextra, fields are identified by a unique string; the associated characteristics
+! are defined in one or more dictionaries (a set of key/values where the key is the field name).
+!
+! File format:
+! ------------
+! All blank lines and all lines beginning with an exclamation mark are ignored.
+! The first interpreted lines define the name of the dictionary and the type of model.
+! All following interpreted lines define the set of key/values.
+!
+! a. Global information
+!    The first interpreted lines define global information valid for all keys of
+!    the current dictionary.
+!
+!         DICTIONARY_NAME 'name'          (any string)
+!         MODEL_TYPE 'type'               (e.g. cosmo, ifs, gme; blank is allowed)
+!         PRODUCT_CATEGORY 'cat1,...'     (optional; e.g. 'determinist'; blank is allowed)
+!         GRIB2_MASTER_TABLE_VERSION nn   (optional; e.g. 11; blank is allowed)
+!         GRIB2_LOCAL_TABLE_VERSION vv    (optional; e.g. 1; blank is allowed only when
+!                                          no local code is used)
+!
+!    The dictionary name is used to refer to a specific dictionary in the namelist of
+!    fieldextra. The model type is used to interpret local values in the dictionary and
+!    in input records. Furthermore, in combination with PRODUCT_CATEGORY, this information
+!    is used to define the products compatible with the current dictionary.
+!
+!    Both DICTIONARY_NAME and MODEL_TYPE entries are compulsory. Empty value of MODEL_TYPE
+!    is supported and means any possible value (e.g. for dictionary refering to observations,
+!    for default dictionary valid for any model).
+!
+!    The PRODUCT_CATEGORY entry is optional; it refers to a comma separated list of
+!    compatible product categories (see description of default_product_category in
+!    README.user for a list of supported values). Empty value is supported and means
+!    any possible value.
+!
+!    The values of GRIB2_MASTER_TABLE_VERSION and GRIB2_LOCAL_TABLE_VERSION refer to the
+!    minimal version of the GRIB 2 tables which are required to interpret the GRIB 2
+!    information used in the current dictionary.
+!
+! b. Key / values (repeated as many times as necessary)
+!    The values associated whith each key are grouped into 5 lines:
+!
+!    Line 1 (Key)
+!      + Key is the field short name (no embedded blanks)
+!    Line 2 (Units, description)
+!      + Units are the physical units of the field
+!      + Description is the field (long) name
+!    Line 3 (set of GRIB 1 attributes as key=value)
+!      + The first surface is the top surface, the second surface (if any) is the bottom surface,
+!        in a geographic meaning
+!    Line 4 (set of GRIB 2 attributes as key=value)
+!      + Some GRIB 2 attributes, such as the surface value or the central wave number, are coded
+!        with the two integers scaleFactorOf... and scaledValueOf..., the attribute value being
+!        10**(-scaleFactorOf...) * scaledValueOf... ; in the dictionary below, scaleFactorOf...
+!        is named 'factor...' and scaledValueOf... is named 'value...'
+!      + The first surface is the top surface, the second surface (if any) is the bottom surface,
+!        in a geographic meaning
+!    Line 5 (other field characteristics, expressed as a set of key=value)
+!      + constant: true if the field is constant in time (associated validation date is ignored)
+!      + singleLevel: true if the field is a single level field
+!      + passiveSfc2: second surface of associated field is passive when:
+!                       (1) singleLevel=false
+!                       (2) passiveSfc2=true
+!                       (3) first surface is indexed model level
+!                       (4) second surface is either undefined or not associated with any value
+!                     Passive second surface means that the second surface information is only 
+!                     used for documenting the level characteristics (incl. vertical coefficients)
+!                     and is not considered when matching levels. More precisely, for passive
+!                     second surface:
+!                     > the surface type is removed by import and reset by export;
+!                     > when processing GRIB 2 records, it is expected that the vertical 
+!                       coordinate coefficients are coded as value of the second fix surface; 
+!                       this is considered both by import and export.
+!                       If found in input record, the coefficients are transfered in the
+!                       output record; otherwise, if suitable vertical coefficients are
+!                       available from another source (e.g. namelist), they will be used.
+!                     This non standard use of the GRIB 2 second surface is expected by the
+!                     COSMO model for the height of the half levels.
+!      + soilModel: true if the field belongs to the soil model (soil, vegetation... but also snow and lake)
+!      + vCompIndex: order of vector component, or -1 if not a 2d vector field
+!                (vector basis as defined by bit 5 of GRIB code table 7)
+!      + associatedVComp: short name of of associated vector component, for 2d vector fields
+!      + associatedMLev: short name of multi-level field which can be associated to build a full vertical profile.
+!      + parent: short name of main parent field (if any).
+!                When the operator to compute the field requires a lateral halo around the target area,
+!                the size of this halo has to be specified; in this case the string format is:
+!                               main_parent_key:halo_size
+!                A halo size of 999 means the full field has to be provided.
+!      + rttovId: string characterizing the RTTOV coefficient file used to compute the associated field;
+!                the full name of the coefficients file is rtcoef_<rttovID>.dat, and the file should
+!                be accessible at the location rttov_coefs_path specified in &GlobalResource.
+!      + rttovChan: channel number in RTTOV coefficient file; required to compute the associated field.
+!      + multiTLevParent: true if multiple time levels of (some of) the parent fields are required.
+!      + localInfoNumberUse: meaning of GRIB 2 localInformationNumber, if any; if localInformationNumber
+!                is used for something different than just differentiating different fields representing
+!                the same physical quantity, this should be documented here. The value of localInfoNumberUse
+!                can be any meaningful string; however, if the corresponding characteristics is computed in
+!                fieldextra, a pre-defined value has to be used. Currently this is the case for:
+!                             poper=azimut_class <--> localInfoNumberUse=numberOfClasses
+!      + keyUsedInProgram: when set, the short name which has to be used in any namelist and any resource
+!                files is the one defined by 'keyUsedInProgram', and not the original key. 
+!
+!    Algorithm used to derive the field short name associated with a GRIB record:
+!      + list of matching dictionary entries is derived according to the rules below
+!      + GRIB 1 attributes are used when working with GRIB 1 records, GRIB 2 attributes
+!        are used when working with GRIB 2 records
+!      + dictionary attributes explicitely defined only match when the same value is
+!        available in the decoded record
+!      + missing dictionary attributes, or dictionary attributes with values set to -1,
+!        always match (wildcard)
+!      + entry with highest explicit matches is selected (i.e. wildcards have lower
+!        priority)
+!      + a short name is associated with a record if, and only if, a unique dictionary
+!        entry can be associated with the decoded record
+!
+!-----------------------------------------------------------------------------------------------------------------------
+DICTIONARY_NAME ifs
+MODEL_TYPE ifs
+PRODUCT_CATEGORY
+GRIB2_MASTER_TABLE_VERSION 19
+GRIB2_LOCAL_TABLE_VERSION 4
+
+!-----------------------------------------------------------------------------------------------------------------------
+!Line1: Short name (string)
+!-----------------------------------------------------------------------------------------------------------------------
+!Line2: Description (fixed format according to template: A20,2X,A140)
+!Units                Name
+!AAAAAAAAAAAAAAAAAAA  AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA...
+!-----------------------------------------------------------------------------------------------------------------------
+!Line3: GRIB 1 information, blank separated key=value groups
+!       key :   table parameter alternateTable alternateParameter
+!      type : integer   integer        integer            integer 
+!   required:     yes       yes             no                 no  
+!    default:      -1        -1             -1                 -1
+!
+!       key : typeLevel valueSfc1 valueSfc2 timeRangeType localElemNumber
+!      type :   integer   integer   integer       integer         integer
+!   required:        no       no         no            no              no
+!    default:        -1       -1         -1            -1              -1
+!-----------------------------------------------------------------------------------------------------------------------
+!Line4: GRIB 2 information, blank separated key=value groups
+!       key : discipline category parameter statProcType typeSfc1 factorSfc1 valueSfc1 typeSfc2 factorSfc2 valueSfc2
+!      type :    integer  integer   integer      integer  integer    integer   integer  integer    integer   integer
+!   required:       yes       yes       yes           no      no          no        no       no         no        no
+!    default:        -1        -1        -1           -1      -1           0        -1       -1          0        -1
+!
+!       key : typeGenProc satelliteSeries satelliteNumber instrumentType factorWaveNumber valueWaveNumber
+!      type :     integer         integer         integer        integer          integer         integer
+!   required:          no              no              no             no               no              no
+!    default:          -1              -1              -1             -1                0              -1
+!
+!       key : constituentType aerosolType modeNumber distFuncType localInfoNumber
+!      type :         integer     integer    integer      integer         integer
+!   required:              no          no         no           no              no
+!    default:              -1          -1         -1           -1              -1
+!-----------------------------------------------------------------------------------------------------------------------
+!Line5: additional information on field characteristics, blank separated key=value groups
+!       key : constant singleLevel passiveSfc2 soilModel vCompIndex associatedVComp associatedMLev
+!      type :  logical     logical     logical   logical    integer          string         string
+!   required:      yes         yes          no       yes        no              no             no
+!    default:        F           F           F         F        -1              ''             ''
+!
+!       key :   parent rttovId rttovChan multiTLevParent localInfoNumberUse keyUsedInProgram
+!      type :   string  string   integer         logical             string           string
+!   required:       no      no        no              no                 no               no
+!    default:       ''      ''        -1               F                 ''               ''
+!-----------------------------------------------------------------------------------------------------------------------
+10FG
+m s-1                 Wind gust at 10 metres in the specified interval
+table=128 parameter=49 typeLevel=1
+discipline=0 category=2 parameter=22 typeSfc1=103 factorSfc1=0 valueSfc1=10 statProcType=2
+constant=F singleLevel=T soilModel=F keyUsedInProgram=VMAX_10M
+ 
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+10FGI
+1                     Wind gust index at 10 metres in the specified interval
+table=132 parameter=49 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F 
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+10FG3
+m s-1                 10 metre wind gust in the past 3 hours
+table=228 parameter=28 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+10FG6
+m s-1                 10 metre wind gust in the past 6 hours
+table=128 parameter=123 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+AERMR01
+1                     Sea salt aerosol (0.03 - 0.5 um) mixing ratio
+table=206 parameter=188
+discipline=192 category=210 parameter=1
+constant=F singleLevel=F soilModel=F 
+
+AERMR02
+1                     Sea salt aerosol (0.5 - 5 um) mixing ratio
+table=206 parameter=189
+discipline=192 category=210 parameter=2
+constant=F singleLevel=F soilModel=F 
+
+AERMR03
+1                     Sea salt aerosol (5 - 20 um) mixing ratio
+table=206 parameter=190
+discipline=192 category=210 parameter=3
+constant=F singleLevel=F soilModel=F 
+
+AERMR04
+1                     Dust aerosol (0.03 - 0.55 um) mixing ratio
+table=206 parameter=191
+discipline=192 category=210 parameter=4
+constant=F singleLevel=F soilModel=F 
+
+AERMR05
+1                     Dust aerosol (0.55 - 0.9 um) mixing ratio
+table=206 parameter=192
+discipline=192 category=210 parameter=5
+constant=F singleLevel=F soilModel=F 
+
+AERMR06
+1                     Dust aerosol (0.9 - 20 um) mixing ratio
+table=206 parameter=193
+discipline=192 category=210 parameter=6
+constant=F singleLevel=F soilModel=F 
+
+AERMR07
+1                     Hydrophilic organic matter aerosol mixing ratio
+table=206 parameter=194
+discipline=192 category=210 parameter=7
+constant=F singleLevel=F soilModel=F 
+
+AERMR08
+1                     Hydrophobic organic matter aerosol mixing ratio
+table=206 parameter=195
+discipline=192 category=210 parameter=8
+constant=F singleLevel=F soilModel=F 
+
+AERMR09
+1                     Hydrophilic black carbon aerosol mixing ratio
+table=206 parameter=196
+discipline=192 category=210 parameter=9
+constant=F singleLevel=F soilModel=F 
+
+AERMR10
+1                     Hydrophobic black carbon aerosol mixing ratio
+table=206 parameter=197
+discipline=192 category=210 parameter=10
+constant=F singleLevel=F soilModel=F 
+
+AERMR11
+1                     Sulphate aerosol mixing ratio
+table=206 parameter=198
+discipline=192 category=210 parameter=11
+constant=F singleLevel=F soilModel=F 
+
+CAPE
+J kg-1                Convective available potential energy
+table=128 parameter=59 typeLevel=1
+discipline=0 category=7 parameter=6 typeSfc1=1 typeSfc2=8 
+constant=F singleLevel=T soilModel=F
+
+CAPEI
+1                     Convective available potential energy index
+table=132 parameter=59 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F 
+
+CC
+1                     Cloud cover
+table=128 parameter=248
+discipline=0 category=6 parameter=32
+constant=F singleLevel=F soilModel=F
+
+CH_CLL
+%                     Cloudless area fraction in atmosphere layer
+table=-1 parameter=-1 typeLevel=1
+discipline=-1 category=-1 parameter=-1 typeSfc1=1
+constant=F singleLevel=T soilModel=F parent=CLCL
+
+CVL
+1                     Low vegetation cover
+table=128 parameter=27 typeLevel=1
+discipline=192 category=128 parameter=27 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+CVH
+1                     High vegetation cover
+table=128 parameter=28 typeLevel=1
+discipline=192 category=128 parameter=28 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+DD
+degrees               Wind direction
+table=2 parameter=31
+discipline=0 category=2 parameter=0
+constant=F singleLevel=F soilModel=F parent=U
+
+DD_10M
+degrees               10m wind direction
+table=140 parameter=249 typeLevel=1
+discipline=192 category=140 parameter=249 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F parent=U_10M
+
+DDCLASS
+1                     Wind direction in azimuth class
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=F parent=DD localInfoNumberUse=numberOfClasses
+
+DDCLASS_10M
+1                     10m wind direction in azimuth class
+table=-1 parameter=-1 typeLevel=-1
+discipline=-1 category=-1 parameter=-1 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F parent=DD_10M localInfoNumberUse=numberOfClasses
+
+DEN
+kg m-3                Air density
+table=2 parameter=89
+discipline=0 category=3 parameter=10
+constant=F singleLevel=F soilModel=F parent=T
+
+D_TD
+K                     Dew point depression
+table=-1 parameter=-1
+discipline=0 category=0 parameter=7
+constant=F singleLevel=F soilModel=F parent=QV
+
+D_TD_2M
+K                     2 metre dewpoint depression
+table=-1 parameter=-1 
+discipline=0 category=0 parameter=7 typeSfc1=103 factorSfc1=0 valueSfc1=2
+constant=F singleLevel=T soilModel=F parent=TD_2M
+
+DPT
+K                     Dew point temperature
+table=200 parameter=17
+discipline=0 category=0 parameter=6
+constant=F singleLevel=F soilModel=F parent=QV keyUsedInProgram=TD
+
+E
+m                     Evaporation
+table=128 parameter=182 typeLevel=1 alternateTable=230 alternateParameter=182
+discipline=192 category=128 parameter=182 typeSfc1=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=AEVAP_S
+
+EMP_SNWLMT
+m                     Altitude of Snowfall Limit, Empirical Formula Based on FI500, FI850, and T850
+table=250 parameter=86 typeLevel=4
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F parent=T
+
+ETADOT
+s-1                   Eta-coordinate vertical velocity
+table=128 parameter=77
+discipline=0 category=2 parameter=32
+constant=F singleLevel=F soilModel=F
+
+EWSS
+N m-2 s               Eastward turbulent surface stress
+table=128 parameter=180 typeLevel=1
+discipline=0 category=2 parameter=38 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+FDIR
+J m-2                 Total sky direct radiation at surface
+table=228 parameter=21 typeLevel=1
+discipline=192 category=228 parameter=21 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+FF
+m s-1                 Wind speed
+table=128 parameter=10
+discipline=0 category=2 parameter=1
+constant=F singleLevel=F soilModel=F parent=U
+
+FF_10M
+m s-1                 10 metre wind speed
+table=128 parameter=207 typeLevel=1
+discipline=0 category=2 parameter=1 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F parent=U_10M
+
+GH
+gpm                   Geopotential height
+table=2 parameter=7
+discipline=0 category=3 parameter=5
+constant=F singleLevel=F soilModel=F
+
+HCC
+1                     High cloud cover
+table=128 parameter=188 typeLevel=1
+discipline=0 category=6 parameter=5 typeSfc1=10
+constant=F singleLevel=T soilModel=F keyUsedInProgram=CLCH
+
+LCC
+1                     Low cloud cover
+table=128 parameter=186 typeLevel=1
+discipline=0 category=6 parameter=3 typeSfc1=10
+constant=F singleLevel=T soilModel=F keyUsedInProgram=CLCL
+
+MCC
+1                     Medium cloud cover
+table=128 parameter=187 typeLevel=1
+discipline=0 category=6 parameter=4 typeSfc1=10
+constant=F singleLevel=T soilModel=F keyUsedInProgram=CLCM
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 0 instead of 4
+SUND
+s                     Duration of sunshine
+table=128 parameter=189 typeLevel=1 alternateTable=230 alternateParameter=189
+discipline=0 category=6 parameter=24 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=DURSUN
+
+TCC
+1                     Total cloud cover
+table=128 parameter=164 typeLevel=1
+discipline=0 category=6 parameter=1 typeSfc1=10
+constant=F singleLevel=T soilModel=F keyUsedInProgram=CLCT
+
+TCWV
+kg m-2                Total column water vapour
+table=128 parameter=137 typeLevel=1
+discipline=192 category=128 parameter=137 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+Z
+m2 s-2                Geopotential
+table=128 parameter=129 
+discipline=0 category=3 parameter=4
+constant=F singleLevel=F soilModel=F parent=HEIGHT keyUsedInProgram=FI
+
+FIS
+m2 s-2                Geopotential at orography
+table=128 parameter=129 typeLevel=1
+discipline=0 category=3 parameter=4 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+ZP
+%                     Geopotential probability with respect to reference distribution
+table=131 parameter=129
+discipline=192 category=131 parameter=129
+constant=F singleLevel=F soilModel=F keyUsedInProgram=FI_QP
+
+LSM
+1                     Land-sea mask
+table=128 parameter=172 typeLevel=1
+discipline=2 category=0 parameter=0 typeSfc1=1
+constant=T singleLevel=T soilModel=F keyUsedInProgram=FR_LAND
+
+H_SNOW
+m                     Surface snow thickness
+table=2 parameter=66 typeLevel=1
+discipline=0 category=1 parameter=11 typeSfc1=1
+constant=F singleLevel=T soilModel=T parent=RHO_SNOW
+
+HEIGHT
+m                     Model level height
+table=2 parameter=8 
+discipline=0 category=3 parameter=6
+constant=F singleLevel=F soilModel=F parent=T
+
+HSURF
+m                     Surface altitude
+table=2 parameter=8 typeLevel=1
+discipline=0 category=3 parameter=6 typeSfc1=1 typeSfc2=101
+constant=T singleLevel=T soilModel=F
+
+HEATX
+K                     Heat index
+table=-1 parameter=-1 
+discipline=0 category=0 parameter=12 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F parent=T_2M
+
+BLH
+m                     Height of the Planetary Boundary Layer                                          
+table=128 parameter=159 typeLevel=1
+discipline=192 category=128 parameter=159 typeSfc1=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=HPBL
+
+HWBT1
+m                     Height of one-degree wet-bulb temperature
+table=228 parameter=48 typeLevel=1
+discipline=192 category=228 parameter=48 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+HZEROCL
+m                     Freezing level altitude
+table=-1 parameter=-1
+discipline=0 category=3 parameter=6 typeSfc1=4 typeSfc2=101
+constant=F singleLevel=T soilModel=F parent=T
+
+DEG0L
+m                     Freezing level altitude
+table=228 parameter=24 typeLevel=1
+discipline=192 category=228 parameter=24 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ISSRD
+W m-2                 Instantaneous surface solar radiation downwards
+table=128 parameter=72 typeLevel=1
+discipline=192 category=128 parameter=72 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+ISTRD
+W m-2                 Instantaneous surface thermal radiation downwards
+table=128 parameter=73 typeLevel=1
+discipline=192 category=128 parameter=73 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+LNSP
+kg m-2                Logarithm of surface pressure
+table=128 parameter=152 typeLevel=109 valueSfc1=1
+discipline=0 category=3 parameter=25 typeSfc1=105 factorSfc1=0 valueSfc1=1
+constant=F singleLevel=T soilModel=F
+
+MEAN2T
+K                     Mean temperature at 2 metres
+table=-1 parameter=-1 
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+MEAN2T24
+K                     Mean temperature at 2 metres in the last 24 hours
+table=128 parameter=55 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+MN2T
+K                     Minimum temperature at 2 metres since previous post-processing
+table=128 parameter=202 typeLevel=1
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2 statProcType=3
+constant=F singleLevel=T soilModel=F keyUsedInProgram=TMIN_2M
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+MN2T3
+K                     Minimum temperature at 2 metres in the last 3 hours
+table=228 parameter=27 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+MN2T6
+K                     Minimum temperature at 2 metres in the last 6 hours
+table=128 parameter=122 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+MN2T24
+K                     Minimum temperature at 2 metres in the last 24 hours
+table=128 parameter=52 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+MX2T
+K                     Maximum temperature at 2 metres since previous post-processing
+table=128 parameter=201 typeLevel=1
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2 statProcType=2
+constant=F singleLevel=T soilModel=F keyUsedInProgram=TMAX_2M
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+MX2T3
+K                     Maximum temperature at 2 metres in the last 3 hours
+table=228 parameter=26 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+MX2T6
+K                     Maximum temperature at 2 metres in the last 6 hours
+table=128 parameter=121 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 2
+MX2T24
+K                     Maximum temperature at 2 metres in the last 24 hours
+table=128 parameter=51 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+NSSS
+N m-2 s               Northward turbulent surface stress
+table=128 parameter=181 typeLevel=1
+discipline=0 category=2 parameter=37 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+O3
+1                     Ozone mass mixing ratio
+table=128 parameter=203
+discipline=0 category=14 parameter=1 
+constant=F singleLevel=F soilModel=F
+
+MSL
+Pa                    Mean sea-level pressure
+table=128 parameter=151 typeLevel=1
+discipline=0 category=3 parameter=1 typeSfc1=101
+constant=F singleLevel=T soilModel=F keyUsedInProgram=PMSL
+
+PRES
+Pa                    Air pressure
+table=128 parameter=54 typeLevel=109
+discipline=0 category=3 parameter=0 typeSfc1=105
+constant=F singleLevel=F soilModel=F parent=LNSP keyUsedInProgram=P
+
+PTYPE
+1                     Precipitation type
+table=-1 parameter=-1
+discipline=0, category=1 parameter=19 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+SP_OLD
+Pa                    Surface pressure
+table=128 parameter=134 typeLevel=109 valueSfc1=1
+discipline=0 category=3 parameter=0 typeSfc1=105 factorSfc1=0 valueSfc1=1
+constant=F singleLevel=T soilModel=F parent=LNSP keyUsedInProgram=PS_OLD
+
+SP
+Pa                    Surface pressure
+table=128 parameter=134 typeLevel=1
+discipline=0 category=3 parameter=0 typeSfc1=1
+constant=F singleLevel=T soilModel=F parent=LNSP keyUsedInProgram=PS
+
+CLWC
+1                     Specific cloud liquid water content
+table=128 parameter=246
+discipline=0 category=1 parameter=83
+constant=F singleLevel=F soilModel=F keyUsedInProgram=QC
+
+CIWC
+1                     Specific cloud ice water content
+table=128 parameter=247
+discipline=0 category=1 parameter=84
+constant=F singleLevel=F soilModel=F keyUsedInProgram=QI
+
+QNH
+Pa                    Pressure reduced at sea level
+table=-1 parameter=-1
+discipline=0 category=3 parameter=11 typeSfc1=101
+constant=F singleLevel=T soilModel=F parent=PS
+
+CRWC
+1                     Specific rain water content
+table=128 parameter=75
+discipline=0 category=1 parameter=85
+constant=F singleLevel=F soilModel=F keyUsedInProgram=QR
+
+CSWC
+1                     Specific snow water content
+table=128 parameter=76
+discipline=0 category=1 parameter=86
+constant=F singleLevel=F soilModel=F keyUsedInProgram=QS
+
+Q
+1                     Specific humidity
+table=128 parameter=133
+discipline=0 category=1 parameter=0
+constant=F singleLevel=F soilModel=F keyUsedInProgram=QV
+
+R
+%                     Relative humidity
+table=128 parameter=157
+discipline=0 category=1 parameter=1
+constant=F singleLevel=F soilModel=F parent=T keyUsedInProgram=RELHUM
+
+RELHUM_2M
+%                     Relative humidity
+table=2 parameter=52 typeLevel=105 valueSfc1=2
+discipline=0 category=1 parameter=1 typeSfc1=103 factorSfc1=0 valueSfc1=2
+constant=F singleLevel=T soilModel=F parent=T_2M
+
+RSN
+kg m-3                Surface snow density
+table=128 parameter=33 typeLevel=1
+discipline=0 category=1 parameter=61 typeSfc1=1
+constant=F singleLevel=T soilModel=T parent=T_2M keyUsedInProgram=RHO_SNOW
+
+RLAT
+deg                   Geographic latitude
+table=-1 parameter=-1
+discipline=0 category=191 parameter=1 typeSfc1=1
+constant=T singleLevel=T soilModel=F parent=FIS
+
+RLON
+deg                   Geographic longitude
+table=-1 parameter=-1
+discipline=0 category=191 parameter=2 typeSfc1=1
+constant=T singleLevel=T soilModel=F parent=FIS
+
+SDOR
+1                     Standard deviation of orography
+table=128 parameter=160 typeLevel=1
+discipline=192 category=128 parameter=160 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+SLT
+1                     Soil type
+table=128 parameter=43 typeLevel=1
+discipline=2 category=3 parameter=0 typeSfc1=1
+constant=T singleLevel=T soilModel=T
+
+SKT
+K                     Skin temperature
+table=128 parameter=235 typeLevel=1
+discipline=0 category=0 parameter=17 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+SR
+m                     Surface roughness
+table=128 parameter=173 typeLevel=1
+discipline=2 category=0 parameter=1 typeSfc1=1
+constant=T singleLevel=T soilModel=F keyUsedInProgram=Z0
+
+SRC
+kg m-2                Skin reservoir content
+table=128 parameter=198 typeLevel=1
+discipline=192 category=128 parameter=198 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+SSHF
+J m-2                 Surface sensible heat flux
+table=128 parameter=146 typeLevel=1
+discipline=0 category=0 parameter=11 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+SSR
+W m-2 s               Net surface solar radiation
+table=128 parameter=176 typeLevel=1
+discipline=0 category=4 parameter=9 typeSfc1=1 
+constant=F singleLevel=T soilModel=F
+
+SSRD
+J m-2                 Surface solar radiation downwards
+table=128 parameter=169 typeLevel=1 alternateTable=230 alternateParameter=169
+discipline=0 category=4 parameter=7 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+SSTK
+K                     Sea surface temperature
+table=128 parameter=34 typeLevel=1
+discipline=10 category=3 parameter=0 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+STRD
+J m-2                 Surface thermal radiation downwards
+table=128 parameter=175 typeLevel=1
+discipline=0 category=5 parameter=3 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+STL1
+K                     Soil temperature level 1
+table=128 parameter=139 typeLevel=112 valueSfc1=0 valueSfc2=7
+discipline=192 category=128 parameter=139 typeSfc1=106 factorSfc1=2 valueSfc1=0 typeSfc2=106 factorSfc2=2 valueSfc2=7
+constant=F singleLevel=T soilModel=T
+
+STL2
+K                     Soil temperature level 2
+table=128 parameter=170 typeLevel=112 valueSfc1=7 valueSfc2=28
+discipline=192 category=128 parameter=170 typeSfc1=106 factorSfc1=2 valueSfc1=7 typeSfc2=106 factorSfc2=2 valueSfc2=28
+constant=F singleLevel=T soilModel=T
+
+STL3
+K                     Soil temperature level 3
+table=128 parameter=183 typeLevel=112 valueSfc1=28 valueSfc2=100
+discipline=192 category=128 parameter=183 typeSfc1=106 factorSfc1=2 valueSfc1=28 typeSfc2=106 factorSfc2=2 valueSfc2=100
+constant=F singleLevel=T soilModel=T
+
+STL4
+K                     Soil temperature level 4
+table=128 parameter=236 typeLevel=112 valueSfc1=100 valueSfc2=255
+discipline=192 category=128 parameter=236 typeSfc1=106 factorSfc1=2 valueSfc1=100 typeSfc2=106 factorSfc2=2 valueSfc2=255
+constant=F singleLevel=T soilModel=T
+
+SWL1
+kg m-2                Soil wetness level 1
+table=128 parameter=140 typeLevel=112 valueSfc1=0 valueSfc2=7
+discipline=192 category=128 parameter=140 typeSfc1=106 factorSfc1=2 valueSfc1=0 typeSfc2=106 factorSfc2=2 valueSfc2=7
+constant=F singleLevel=T soilModel=T
+
+SWL2
+kg m-2                Soil wetness level 2
+table=128 parameter=171 typeLevel=112 valueSfc1=7 valueSfc2=28
+discipline=192 category=128 parameter=171 typeSfc1=106 factorSfc1=2 valueSfc1=7 typeSfc2=106 factorSfc2=2 valueSfc2=28
+constant=F singleLevel=T soilModel=T
+
+SWL3
+kg m-2                Soil wetness level 3
+table=128 parameter=184 typeLevel=112 valueSfc1=28 valueSfc2=100
+discipline=192 category=128 parameter=184 typeSfc1=106 factorSfc1=2 valueSfc1=28 typeSfc2=106 factorSfc2=2 valueSfc2=100
+constant=F singleLevel=T soilModel=T
+
+SWL4
+kg m-2                Soil wetness level 4
+table=128 parameter=237 typeLevel=112 valueSfc1=100 valueSfc2=255
+discipline=192 category=128 parameter=237 typeSfc1=106 factorSfc1=2 valueSfc1=100 typeSfc2=106 factorSfc2=2 valueSfc2=255
+constant=F singleLevel=T soilModel=T
+
+SWVL1
+1                     Volumetric soil water layer 1
+table=128 parameter=39 typeLevel=112 valueSfc1=0 valueSfc2=7
+discipline=192 category=128 parameter=39 typeSfc1=106 factorSfc1=2 valueSfc1=0 typeSfc2=106 factorSfc2=2 valueSfc2=7
+constant=F singleLevel=T soilModel=T
+
+SWVL2
+1                     Volumetric soil water layer 2
+table=128 parameter=40 typeLevel=112 valueSfc1=7 valueSfc2=28
+discipline=192 category=128 parameter=40 typeSfc1=106 factorSfc1=2 valueSfc1=7 typeSfc2=106 factorSfc2=2 valueSfc2=28
+constant=F singleLevel=T soilModel=T
+
+SWVL3
+1                     Volumetric soil water layer 3
+table=128 parameter=41 typeLevel=112 valueSfc1=28 valueSfc2=100
+discipline=192 category=128 parameter=41 typeSfc1=106 factorSfc1=2 valueSfc1=28 typeSfc2=106 factorSfc2=2 valueSfc2=100
+constant=F singleLevel=T soilModel=T
+
+SWVL4
+1                     Volumetric soil water layer 4
+table=128 parameter=42 typeLevel=112 valueSfc1=100 valueSfc2=255
+discipline=192 category=128 parameter=42 typeSfc1=106 factorSfc1=2 valueSfc1=100 typeSfc2=106 factorSfc2=2 valueSfc2=255
+constant=F singleLevel=T soilModel=T
+
+T
+K                     Temperature
+table=128 parameter=130
+discipline=0 category=0 parameter=0
+constant=F singleLevel=F soilModel=F
+
+2T
+K                     2 metre temperature
+table=128 parameter=167 typeLevel=1
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2
+constant=F singleLevel=T soilModel=F keyUsedInProgram=T_2M
+
+2TP
+%                     2m temperature probability with respect to reference distribution
+table=131 parameter=167 typeLevel=1
+discipline=192 category=131 parameter=167 typeSfc1=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=T_2M_QP
+
+TSN
+K                     Temperature of snow layer
+table=128 parameter=238 typeLevel=1
+discipline=192 category=128 parameter=238 typeSfc1=1
+constant=F singleLevel=T soilModel=T keyUsedInProgram=T_SNOW
+
+TCO3
+kg m-2                Total column ozone
+table=128 parameter=206 typeLevel=1
+discipline=192 category=128 parameter=206 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+2D
+K                     2 metre dewpoint temperature
+table=128 parameter=168 typeLevel=1
+discipline=0 category=0 parameter=6 typeSfc1=103 factorSfc1=0 valueSfc1=2
+constant=F singleLevel=T soilModel=F keyUsedInProgram=TD_2M
+
+! ATTENTION: ECMWF codes this parameter with unitsFactor=1000
+CP
+m                     Accumulated convective precipitation
+table=128 parameter=143 typeLevel=1 alternateTable=230 alternateParameter=143
+discipline=0 category=1 parameter=10 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=TOT_CON
+
+LSP
+m                     Accumulated large scale precipitation
+table=128 parameter=142 typeLevel=1
+discipline=192 category=128 parameter=142 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=TOT_GSP
+
+TOT_RAIN
+m                     Accumulated total precipitation in rain
+table=250 parameter=62 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F parent=TOT_PREC
+
+! ATTENTION: ECMWF codes this parameter in GRIB1 with time range indicator 0 instead of 4
+TP
+m                     Accumulated total precipitation
+table=128 parameter=228 typeLevel=1 alternateTable=230 alternateParameter=228
+discipline=0 category=1 parameter=52 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=TOT_PREC
+
+TPP
+%                     Precipitation amount probability with respect to reference distribution
+table=131 parameter=228 typeLevel=1
+discipline=192 category=131 parameter=228 typeSfc1=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=TOT_PREC_QP
+
+TPRATE
+m s-1                 Total precipitation rate
+table=172 parameter=228 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+SF
+m                     Accumulated total precipitation in snow, water equivalent
+table=128 parameter=144 typeLevel=1
+discipline=192 category=128 parameter=144 typeSfc1=1
+constant=F singleLevel=T soilModel=F keyUsedInProgram=TOT_SNOW
+
+TVL
+1                     Type of low vegetation
+table=128 parameter=29 typeLevel=1
+discipline=192 category=128 parameter=29 typeSfc1=1
+constant=T singleLevel=T soilModel=T
+
+TVH
+1                     Type of high vegetation
+table=128 parameter=30 typeLevel=1
+discipline=192 category=128 parameter=30 typeSfc1=1
+constant=T singleLevel=T soilModel=T
+
+U
+m s-1                 u-component of wind
+table=128 parameter=131
+discipline=0 category=2 parameter=2
+constant=F singleLevel=F soilModel=F vCompIndex=1 associatedVComp=V
+
+10U
+m s-1                 10 metre U wind component
+table=128 parameter=165 typeLevel=1
+discipline=0 category=2 parameter=2 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F vCompIndex=1 associatedVComp=V_10M keyUsedInProgram=U_10M
+
+100U
+m s-1                 100 metre U wind component
+table=228 parameter=246 typeLevel=1
+discipline=192 category=228 parameter=246 typeSfc1=1
+constant=F singleLevel=T soilModel=F vCompIndex=1 associatedVComp=V_100M keyUsedInProgram=U_100M
+
+V
+m s-1                 v-component of wind
+table=128 parameter=132
+discipline=0 category=2 parameter=3
+constant=F singleLevel=F soilModel=F vCompIndex=2 associatedVComp=U
+
+VO
+J kg-1                Relative vorticity
+table=128 parameter=138
+discipline=0 category=2 parameter=12
+constant=F singleLevel=F soilModel=F
+
+10V
+m s-1                 10 metre V wind component
+table=128 parameter=166 typeLevel=1
+discipline=0 category=2 parameter=3 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F vCompIndex=2 associatedVComp=U_10M keyUsedInProgram=V_10M
+
+100V
+m s-1                 100 metre V wind component
+table=228 parameter=247 typeLevel=1
+discipline=192 category=228 parameter=247 typeSfc1=1
+constant=F singleLevel=T soilModel=F vCompIndex=2 associatedVComp=U_100M keyUsedInProgram=V_100M
+
+VMAX_10M_DWH
+m s-1                 Wind gust at 10 metres  
+table=128 parameter=49 typeLevel=105 valueSfc1=10
+discipline=192 category=128 parameter=49 typeSfc1=103 factorSfc1=0 valueSfc1=10 statProcType=2
+constant=F singleLevel=T soilModel=F
+
+W
+Pa s-1                Vertical velocity
+table=128 parameter=135
+discipline=0 category=2 parameter=8
+constant=F singleLevel=F soilModel=F keyUsedInProgram=OMEGA
+
+! ATTENTION: ECMWF codes this parameter with unitsFactor 1000
+SD
+m                     Snow depth, water equivalent
+table=128 parameter=141 typeLevel=1
+discipline=0 category=1 parameter=11 typeSfc1=1
+constant=F singleLevel=T soilModel=T keyUsedInProgram=W_SNOW
+
+ZA
+m2 s-2                Geopotential anomaly
+table=171 parameter=129 
+discipline=192 category=171 parameter=129 
+constant=F singleLevel=F soilModel=F
+
+
+!
+! Auxiliary fields used by some operators
+! No associated GRIB coding
+!
+
+
+OMEGA_SLOPE
+Pa s-1                Vertical velocity in terrain following reference system
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=F parent=ETADOT
+
+VARIANCE_TOT_PREC
+kg2 m-4               Variance of total precipitation
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+REF_HEIGHT
+m                     Reference height expressed in meter above msl
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+REF_PRESSURE
+Pa                    Reference pressure
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+INV_SCALE_HEIGHT
+m-1                   Scaling coefficient expressed in 1/meter
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+COUNT_EVENT
+1                     Number of events
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+LOG_FIELD
+1                     Natural logarithm of field
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+NUMERIC_COEFFICIENT
+1                     Numeric coefficient
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+UPSCALED_VGRAD_T
+K m-1                 Upscaled vertical gradient of temperature 
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+TIME_INDEX
+1                     Validation date index
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F

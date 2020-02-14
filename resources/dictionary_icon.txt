@@ -1,0 +1,2495 @@
+! Dictionary: specification of field properties for fieldextra (v11.4 upwards)
+!-----------------------------------------------------------------------------------------------------------------------
+! Within fieldextra, fields are identified by a unique string; the associated characteristics
+! are defined in one or more dictionaries (a set of key/values where the key is the field name).
+!
+! File format:
+! ------------
+! All blank lines and all lines beginning with an exclamation mark are ignored.
+! The first interpreted lines define the name of the dictionary and the type of model.
+! All following interpreted lines define the set of key/values.
+!
+! a. Global information
+!    The first interpreted lines define global information valid for all keys of
+!    the current dictionary.
+!
+!         DICTIONARY_NAME 'name'          (any string)
+!         MODEL_TYPE 'type'               (e.g. cosmo, ifs, gme; blank is allowed)
+!         PRODUCT_CATEGORY 'cat1,...'     (optional; e.g. 'determinist'; blank is allowed)
+!         GRIB2_MASTER_TABLE_VERSION nn   (optional; e.g. 11; blank is allowed)
+!         GRIB2_LOCAL_TABLE_VERSION vv    (optional; e.g. 1; blank is allowed only when
+!                                          no local code is used)
+!
+!    The dictionary name is used to refer to a specific dictionary in the namelist of
+!    fieldextra. The model type is used to interpret local values in the dictionary and
+!    in input records. Furthermore, in combination with PRODUCT_CATEGORY, this information
+!    is used to define the products compatible with the current dictionary.
+!
+!    Both DICTIONARY_NAME and MODEL_TYPE entries are compulsory. Empty value of MODEL_TYPE
+!    is supported and means any possible value (e.g. for dictionary refering to observations,
+!    for default dictionary valid for any model).
+!
+!    The PRODUCT_CATEGORY entry is optional; it refers to a comma separated list of
+!    compatible product categories (see description of default_product_category in
+!    README.user for a list of supported values). Empty value is supported and means
+!    any possible value.
+!
+!    The values of GRIB2_MASTER_TABLE_VERSION and GRIB2_LOCAL_TABLE_VERSION refer to the
+!    minimal version of the GRIB 2 tables which are required to interpret the GRIB 2
+!    information used in the current dictionary.
+!
+! b. Key / values (repeated as many times as necessary)
+!    The values associated whith each key are grouped into 5 lines:
+!
+!    Line 1 (Key)
+!      + Key is the field short name (no embedded blanks)
+!    Line 2 (Units, description)
+!      + Units are the physical units of the field
+!      + Description is the field (long) name
+!    Line 3 (set of GRIB 1 attributes as key=value)
+!      + The first surface is the top surface, the second surface (if any) is the bottom surface,
+!        in a geographic meaning
+!    Line 4 (set of GRIB 2 attributes as key=value)
+!      + Some GRIB 2 attributes, such as the surface value or the central wave number, are coded
+!        with the two integers scaleFactorOf... and scaledValueOf..., the attribute value being
+!        10**(-scaleFactorOf...) * scaledValueOf... ; in the dictionary below, scaleFactorOf...
+!        is named 'factor...' and scaledValueOf... is named 'value...'
+!      + The first surface is the top surface, the second surface (if any) is the bottom surface,
+!        in a geographic meaning
+!    Line 5 (other field characteristics, expressed as a set of key=value)
+!      + constant: true if the field is constant in time (associated validation date is ignored)
+!      + singleLevel: true if the field is a single level field
+!      + passiveSfc2: second surface of associated field is passive when:
+!                       (1) singleLevel=false
+!                       (2) passiveSfc2=true
+!                       (3) first surface is indexed model level
+!                       (4) second surface is either undefined or not associated with any value
+!                     Passive second surface means that the second surface information is only 
+!                     used for documenting the level characteristics (incl. vertical coefficients)
+!                     and is not considered when matching levels. More precisely, for passive
+!                     second surface:
+!                     > the surface type is removed by import and reset by export;
+!                     > when processing GRIB 2 records, it is expected that the vertical 
+!                       coordinate coefficients are coded as value of the second fix surface; 
+!                       this is considered both by import and export.
+!                       If found in input record, the coefficients are transfered in the
+!                       output record; otherwise, if suitable vertical coefficients are
+!                       available from another source (e.g. namelist), they will be used.
+!                     This non standard use of the GRIB 2 second surface is expected by the
+!                     COSMO model for the height of the half levels.
+!      + soilModel: true if the field belongs to the soil model (soil, vegetation... but also snow and lake)
+!      + vCompIndex: order of vector component, or -1 if not a 2d vector field
+!                (vector basis as defined by bit 5 of GRIB code table 7)
+!      + associatedVComp: short name of of associated vector component, for 2d vector fields
+!      + associatedMLev: short name of multi-level field which can be associated to build a full vertical profile.
+!      + parent: short name of main parent field (if any).
+!                When the operator to compute the field requires a lateral halo around the target area,
+!                the size of this halo has to be specified; in this case the string format is:
+!                               main_parent_key:halo_size
+!                A halo size of 999 means the full field has to be provided.
+!      + rttovId: string characterizing the RTTOV coefficient file used to compute the associated field;
+!                the full name of the coefficients file is rtcoef_<rttovID>.dat, and the file should
+!                be accessible at the location rttov_coefs_path specified in &GlobalResource.
+!      + rttovChan: channel number in RTTOV coefficient file; required to compute the associated field.
+!      + multiTLevParent: true if multiple time levels of (some of) the parent fields are required.
+!      + localInfoNumberUse: meaning of GRIB 2 localInformationNumber, if any; if localInformationNumber
+!                is used for something different than just differentiating different fields representing
+!                the same physical quantity, this should be documented here. The value of localInfoNumberUse
+!                can be any meaningful string; however, if the corresponding characteristics is computed in
+!                fieldextra, a pre-defined value has to be used. Currently this is the case for:
+!                             poper=azimut_class <--> localInfoNumberUse=numberOfClasses
+!      + keyUsedInProgram: when set, the short name which has to be used in any namelist and any resource
+!                files is the one defined by 'keyUsedInProgram', and not the original key. 
+!
+!    Algorithm used to derive the field short name associated with a GRIB record:
+!      + list of matching dictionary entries is derived according to the rules below
+!      + GRIB 1 attributes are used when working with GRIB 1 records, GRIB 2 attributes
+!        are used when working with GRIB 2 records
+!      + dictionary attributes explicitely defined only match when the same value is
+!        available in the decoded record
+!      + missing dictionary attributes, or dictionary attributes with values set to -1,
+!        always match (wildcard)
+!      + entry with highest explicit matches is selected (i.e. wildcards have lower
+!        priority)
+!      + a short name is associated with a record if, and only if, a unique dictionary
+!        entry can be associated with the decoded record
+!
+!-----------------------------------------------------------------------------------------------------------------------
+DICTIONARY_NAME icon
+MODEL_TYPE icon
+PRODUCT_CATEGORY
+GRIB2_MASTER_TABLE_VERSION 19
+GRIB2_LOCAL_TABLE_VERSION 1
+
+!-----------------------------------------------------------------------------------------------------------------------
+!Line1: Short name (string)
+!-----------------------------------------------------------------------------------------------------------------------
+!Line2: Description (fixed format according to template: A20,2X,A140)
+!Units                Name
+!AAAAAAAAAAAAAAAAAAA  AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA...
+!-----------------------------------------------------------------------------------------------------------------------
+!Line3: GRIB 1 information, blank separated key=value groups
+!       key :   table parameter alternateTable alternateParameter
+!      type : integer   integer        integer            integer 
+!   required:     yes       yes             no                 no  
+!    default:      -1        -1             -1                 -1
+!
+!       key : typeLevel valueSfc1 valueSfc2 timeRangeType localElemNumber
+!      type :   integer   integer   integer       integer         integer
+!   required:        no       no         no            no              no
+!    default:        -1       -1         -1            -1              -1
+!-----------------------------------------------------------------------------------------------------------------------
+!Line4: GRIB 2 information, blank separated key=value groups
+!       key : discipline category parameter statProcType typeSfc1 factorSfc1 valueSfc1 typeSfc2 factorSfc2 valueSfc2
+!      type :    integer  integer   integer      integer  integer    integer   integer  integer    integer   integer
+!   required:       yes       yes       yes           no      no          no        no       no         no        no
+!    default:        -1        -1        -1           -1      -1           0        -1       -1          0        -1
+!
+!       key : typeGenProc satelliteSeries satelliteNumber instrumentType factorWaveNumber valueWaveNumber
+!      type :     integer         integer         integer        integer          integer         integer
+!   required:          no              no              no             no               no              no
+!    default:          -1              -1              -1             -1                0              -1
+!
+!       key : constituentType aerosolType modeNumber distFuncType localInfoNumber
+!      type :         integer     integer    integer      integer         integer
+!   required:              no          no         no           no              no
+!    default:              -1          -1         -1           -1              -1
+!-----------------------------------------------------------------------------------------------------------------------
+!Line5: additional information on field characteristics, blank separated key=value groups
+!       key : constant singleLevel passiveSfc2 soilModel vCompIndex associatedVComp associatedMLev
+!      type :  logical     logical     logical   logical    integer          string         string
+!   required:      yes         yes          no       yes        no              no             no
+!    default:        F           F           F         F        -1              ''             ''
+!
+!       key :   parent rttovId rttovChan multiTLevParent localInfoNumberUse keyUsedInProgram
+!      type :   string  string   integer         logical             string           string
+!   required:       no      no        no              no                 no               no
+!    default:       ''      ''        -1               F                 ''               ''
+!-----------------------------------------------------------------------------------------------------------------------
+
+ALB_RAD
+%                     Surface albedo for visible range, diffuse
+table=2 parameter=84 typeLevel=1
+discipline=0 category=19 parameter=1 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALHFL_BS
+W m-2                 Latent heat flux from bare soil
+table=-1 parameter=-1
+discipline=2 category=0 parameter=193 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=T
+
+ALHFL_PL
+W m-2                 Latent heat flux from plants
+table=-1 parameter=-1
+discipline=2 category=0 parameter=194 typeSfc1=106 statProcType=0
+constant=F singleLevel=F soilModel=T
+
+ALHFL_S
+W m-2                 Latent heat net flux at surface
+table=2 parameter=121 typeLevel=1
+discipline=0 category=0 parameter=10 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+APAB_S
+W m-2                 Photosynthetically active radiation flux at surface
+table=201 parameter=5 typeLevel=1 timeRangeType=3
+discipline=0 category=4 parameter=10 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+ASHFL_S
+W m-2                 Sensible heat net flux at surface
+table=2 parameter=122 typeLevel=1
+discipline=0 category=0 parameter=11 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+ASOB_S
+W m-2                 Net short-wave radiation flux at surface
+table=2 parameter=111 typeLevel=1 timeRangeType=3
+discipline=0 category=4 parameter=9 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+ASOB_T
+W m-2                 Net short-wave radiation flux at TOA
+table=2 parameter=113 typeLevel=8 timeRangeType=3
+discipline=0 category=4 parameter=9 typeSfc1=8 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+ASOD_S
+W m-2                 Downward shortwave radiation flux at surface
+table=250 parameter=111 typeLevel=1
+discipline=0 category=4 parameter=7 typeSfc1=1
+constant=F singleLevel=T soilModel=F parent=ASWDIR_S keyUsedInProgram=GLOB
+
+ASWDIFD_S
+W m-2                 Surface down solar diffuse radiation
+table=201 parameter=23 typeLevel=1
+discipline=0 category=4 parameter=199 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+ASWDIFU_S
+W m-2                 Surface up solar diffuse radiation
+table=201 parameter=24 typeLevel=1
+discipline=0 category=4 parameter=8 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+ASWDIR_S
+W m-2                 Surface down solar direct radiation
+table=201 parameter=22 typeLevel=1
+discipline=0 category=4 parameter=198 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+ATHB_S
+W m-2                 Net long-wave radiation flux at surface
+table=2 parameter=112 typeLevel=1 timeRangeType=3
+discipline=0 category=5 parameter=5 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+ATHB_T
+W m-2                 Net long-wave radiation flux at TOA
+table=2 parameter=114 typeLevel=8 timeRangeType=3
+discipline=0 category=5 parameter=5 typeSfc1=8 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+AUMFL_S
+N m-2                 U-momentum flux at surface
+table=2 parameter=124 typeLevel=1
+discipline=0 category=2 parameter=17 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F vCompIndex=1 associatedVComp=AVMFL_S
+
+AVMFL_S
+N m-2                 V-momentum flux at surface
+table=2 parameter=125 typeLevel=1
+discipline=0 category=2 parameter=18 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=F vCompIndex=2 associatedVComp=AUMFL_S
+
+CAPE_CON
+J kg-1                Atmosphere specific convective available potential energy
+table=201 parameter=241 typeLevel=1
+discipline=0 category=7 parameter=6 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+CAPE_ML
+J kg-1                Cape of mean surface layer parcel
+table=201 parameter=145 typeLevel=1
+discipline=0 category=7 parameter=6 typeSfc1=192
+constant=F singleLevel=T soilModel=F parent=T
+
+CAPE_MU
+J kg-1                Cape of most unstable parcel
+table=201 parameter=143 typeLevel=1
+discipline=0 category=7 parameter=6 typeSfc1=193
+constant=F singleLevel=T soilModel=F parent=T
+
+CBHEXT
+%                     Horizontal extent of cumulonimbus (CB)
+table=-1 parameter=-1
+discipline=0 category=6 parameter=25 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+CEILING
+m                     Cloud ceiling height (above MSL)
+table=203 parameter=157 typeLevel=1
+discipline=0 category=6 parameter=13 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+CIN_ML
+J kg-1                Convective inhibition of mean surface layer parcel
+table=201 parameter=146 typeLevel=1
+discipline=0 category=7 parameter=7 typeSfc1=192
+constant=F singleLevel=T soilModel=F parent=T
+
+CIN_MU
+J kg-1                Convective inhibition of most unstable parcel
+table=201 parameter=144 typeLevel=1
+discipline=0 category=7 parameter=7 typeSfc1=193
+constant=F singleLevel=T soilModel=F parent=T
+
+CLC
+%                     Cloud cover
+table=201 parameter=29
+discipline=0 category=6 parameter=22
+constant=F singleLevel=F soilModel=F
+
+CLCH
+%                     High level clouds
+table=2 parameter=75 typeLevel=1
+discipline=0 category=6 parameter=22 typeSfc1=100 factorSfc1=-2 valueSfc1=0 typeSfc2=100 factorSfc2=-2 valueSfc2=400
+constant=F singleLevel=T soilModel=F
+
+CLCL
+%                     Low level clouds
+table=2 parameter=73 typeLevel=1
+discipline=0 category=6 parameter=22 typeSfc1=100 factorSfc1=-2 valueSfc1=800 typeSfc2=1
+constant=F singleLevel=T soilModel=F
+
+CLCM
+%                     Mid level clouds
+table=2 parameter=74 typeLevel=1
+discipline=0 category=6 parameter=22 typeSfc1=100 factorSfc1=-2 valueSfc1=400 typeSfc2=100 factorSfc2=-2 valueSfc2=800
+constant=F singleLevel=T soilModel=F
+
+CLCT
+%                     Total cloud cover
+table=2 parameter=71 typeLevel=1
+discipline=0 category=6 parameter=1 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+CLCT_MOD
+1                     Modified total cloud cover
+table=203 parameter=204 typeLevel=1
+discipline=0 category=6 parameter=199 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+CLDEPTH
+1                     Normalized cloud depth
+table=203 parameter=203 typeLevel=1
+discipline=0 category=6 parameter=198 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+C_T_LK
+1                     Shape factor of temperature profile in lake thermocline
+table=201 parameter=91 typeLevel=1
+discipline=1 category=2 parameter=10 typeSfc1=166 typeSfc2=162
+constant=F singleLevel=T soilModel=T
+
+DD
+degrees               Wind direction
+table=2 parameter=31
+discipline=0 category=2 parameter=0
+constant=F singleLevel=F soilModel=F parent=U
+
+DD_10M
+degrees               Wind direction at 10m above ground
+table=2 parameter=31 typeLevel=105 valueSfc1=10
+discipline=0 category=2 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F parent=U_10M
+
+DEN
+kg m-3                Density of moist air
+table=2 parameter=89
+discipline=0 category=3 parameter=10
+constant=F singleLevel=F soilModel=F parent=T
+
+DEPTH_LK
+m                     Lake depth
+table=201 parameter=96 typeLevel=1
+discipline=1 category=2 parameter=0 typeSfc1=1 typeSfc2=162
+constant=T singleLevel=T soilModel=T
+
+DP_BS_LK
+m                     Thickness of the thermally active layer of bottom sediments
+table=201 parameter=93 typeLevel=1
+discipline=1 category=2 parameter=3 typeSfc1=162 typeSfc2=164
+constant=T singleLevel=T soilModel=T
+
+DTKE_CON
+m2 s-3                Buoyancy production of TKE due to sub grid scale convection
+table=-1 parameter=-1
+discipline=0 category=19 parameter=219
+constant=F singleLevel=F soilModel=F
+
+DTKE_HSH
+m2 s-3                Shear-production of TKE due to separated horizontal shear modes
+table=-1 parameter=-1
+discipline=0 category=19 parameter=221
+constant=F singleLevel=F soilModel=F 
+
+EDP
+m2/3 s-1              Eddy dissipation parameter
+table=-1 parameter=-1
+discipline=0 category=19 parameter=216
+constant=F singleLevel=F soilModel=F parent=TKE
+
+EDPP
+%                     Probability Density Function of EDP
+table=-1 parameter=-1
+discipline=0 category=19 parameter=229
+constant=F singleLevel=F soilModel=F parent=EDP multiTLevParent=F
+
+EDP_MAX_UUIR
+m2/3 s-1              Eddy dissipation parameter - Total column max - Upper UIR
+table=-1 parameter=-1
+discipline=0 category=19 parameter=226
+constant=F singleLevel=F soilModel=F parent=TKE
+
+EDP_MAX_LUIR
+m2/3 s-1              Eddy dissipation parameter - Total column max - Lower UIR
+table=-1 parameter=-1
+discipline=0 category=19 parameter=225
+constant=F singleLevel=F soilModel=F parent=TKE
+
+EDP_MAX_UFIR
+m2/3 s-1              Eddy dissipation parameter - Total column max - Upper FIR
+table=-1 parameter=-1
+discipline=0 category=19 parameter=224
+constant=F singleLevel=F soilModel=F parent=TKE
+
+EDP_MAX_LFIR
+m2/3 s-1              Eddy dissipation parameter - Total column max - Lower FIR
+table=-1 parameter=-1
+discipline=0 category=19 parameter=228
+constant=F singleLevel=F soilModel=F parent=TKE
+
+EMIS_RAD
+1                     Longwave surface emissivity
+table=202 parameter=56 typeLevel=1
+discipline=2 category=3 parameter=199 typeSfc1=1
+constant=T singleLevel=T soilModel=T
+
+FETCH_LK
+m                     Wind fetch over lake
+table=201 parameter=97 typeLevel=1
+discipline=0 category=2 parameter=33 typeSfc1=1
+constant=T singleLevel=T soilModel=T
+
+FI
+m2 s-2                Geopotential
+table=2 parameter=6
+discipline=0 category=3 parameter=4
+constant=F singleLevel=F soilModel=F parent=HEIGHT
+
+FRESHSNW
+1                     Fresh snow factor (weighting function for albedo indicating freshness of snow)
+table=201 parameter=129 typeLevel=1
+discipline=0 category=1 parameter=203 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+FR_ICE
+1                     Sea ice cover
+table=2 parameter=91 typeLevel=1
+discipline=10 category=2 parameter=0 typeSfc1=1
+constant=T singleLevel=T soilModel=T
+
+FR_LAKE
+1                     Fraction of inland lake water
+table=202 parameter=55 typeLevel=1
+discipline=1 category=2 parameter=2 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+FR_LAND
+1                     Land fraction
+table=2 parameter=81 typeLevel=1
+discipline=2 category=0 parameter=0 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+GAMSO_LK
+m-1                   Attenuation coefficient for solar radiation in lake water
+table=201 parameter=92 typeLevel=1
+discipline=1 category=2 parameter=11 typeSfc1=1 typeSfc2=162
+constant=T singleLevel=T soilModel=T
+
+GH
+gpm                   Geopotential height
+table=2 parameter=7
+discipline=0 category=3 parameter=5
+constant=T singleLevel=F soilModel=F
+
+HBAS_CON
+m                     Height of convective cloud base above msl
+table=201 parameter=68 typeLevel=2
+discipline=0 category=6 parameter=26 typeSfc1=2 typeSfc2=101
+constant=F singleLevel=T soilModel=F
+
+HEIGHT
+m                     Geometric height
+table=2 parameter=8
+discipline=0 category=3 parameter=6
+constant=T singleLevel=F soilModel=F 
+
+HSURF
+m                     Geometric height of the earth surface above msl
+table=2 parameter=8 typeLevel=1
+discipline=0 category=3 parameter=6 typeSfc1=1 typeSfc2=101
+constant=T singleLevel=T soilModel=F
+
+HTOP_CON
+m                     Height of convective cloud top above msl
+table=201 parameter=69 typeLevel=3
+discipline=0 category=6 parameter=27 typeSfc1=3 typeSfc2=101
+constant=F singleLevel=T soilModel=F
+
+HTOP_DC
+m                     Height of top of dry convection above msl
+table=201 parameter=82 typeLevel=1
+discipline=0 category=6 parameter=196 typeSfc1=3 typeSfc2=101
+constant=F singleLevel=T soilModel=F
+
+HZEROCL
+m                     Height of 0 degree Celsius isotherm above msl
+table=201 parameter=84 typeLevel=4
+discipline=0 category=3 parameter=6 typeSfc1=4 typeSfc2=101
+constant=F singleLevel=T soilModel=F parent=T
+
+H_B1_LK
+m                     Thickness of the upper layer of bottom sediments
+table=201 parameter=94 typeLevel=1
+discipline=1 category=2 parameter=3 typeSfc1=162 typeSfc2=165
+constant=F singleLevel=T soilModel=T
+
+H_ICE
+m                     Sea ice thickness
+table=2 parameter=92 typeLevel=1
+discipline=10 category=2 parameter=1 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+H_ML_LK
+m                     Thickness of lake mixed layer
+table=201 parameter=95 typeLevel=1
+discipline=1 category=2 parameter=0 typeSfc1=1 typeSfc2=166
+constant=F singleLevel=T soilModel=T
+
+H_SNOW
+m                     Snow depth
+table=2 parameter=66 typeLevel=1
+discipline=0 category=1 parameter=11 typeSfc1=1
+constant=F singleLevel=T soilModel=T parent=RHO_SNOW
+
+LAI
+1                     Leaf area index
+table=202 parameter=61 typeLevel=1
+discipline=2 category=0 parameter=28 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+LAI_MX
+1                     Leaf area index in the vegetation phase
+table=202 parameter=69 typeLevel=1 timeRangeType=2
+discipline=2 category=0 parameter=28 typeSfc1=1 statProcType=2
+constant=T singleLevel=T soilModel=T
+
+NCRAIN
+1                     Specific number concentration of rain
+table=-1 parameter=-1
+discipline=0 category=1 parameter=216 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+NDVIRATIO
+1                     Ratio of current NDVI to annual maximum
+table=-1 parameter=-1
+discipline=2 category=0 parameter=192 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+NDVI_MRAT
+1                     Ratio of monthly mean NDVI to annual maximum
+table=202 parameter=79 typeLevel=1 timeRangeType=3
+discipline=2 category=0 parameter=192 typeSfc1=1 statProcType=0
+constant=F singleLevel=T soilModel=T
+
+OMEGA
+Pa s-1                Vertical velocity in pressure coordinates
+table=2 parameter=39
+discipline=0 category=2 parameter=8
+constant=F singleLevel=F soilModel=F
+
+P
+Pa                    Air pressure
+table=2 parameter=1
+discipline=0 category=3 parameter=0
+constant=F singleLevel=F soilModel=F
+
+
+PLCOV
+%                     Plant cover
+table=2 parameter=87 typeLevel=1
+discipline=2 category=0 parameter=4 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+PLCOV_MX
+%                     Plant covering degree in the vegetation phase
+table=202 parameter=67 typeLevel=1 timeRangeType=2
+discipline=2 category=0 parameter=4 typeSfc1=1 statProcType=2
+constant=T singleLevel=T soilModel=T
+
+PMSL
+Pa                    Surface pressure reduced to msl
+table=2 parameter=2 typeLevel=102
+discipline=0 category=3 parameter=1 typeSfc1=101
+constant=F singleLevel=T soilModel=F
+
+PS
+Pa                    Surface pressure (not reduced)
+table=2 parameter=1 typeLevel=1
+discipline=0 category=3 parameter=0 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+QC
+1                     Cloud mixing ratio
+table=201 parameter=31
+discipline=0 category=1 parameter=22
+constant=F singleLevel=F soilModel=F
+
+QI
+1                     Cloud ice mixing ratio
+table=201 parameter=33
+discipline=0 category=1 parameter=82
+constant=F singleLevel=F soilModel=F
+
+QNH
+Pa                    Pressure reduced at sea level
+table=250 parameter=3 typeLevel=102
+discipline=0 category=3 parameter=11 typeSfc1=101
+constant=F singleLevel=T soilModel=F parent=PS
+
+QR
+1                     Rain mixing ratio
+table=201 parameter=35
+discipline=0 category=1 parameter=24
+constant=F singleLevel=F soilModel=F
+
+QS
+1                     Snow mixing ratio
+table=201 parameter=36
+discipline=0 category=1 parameter=25
+constant=F singleLevel=F soilModel=F
+
+QV
+1                     Specific humidity
+table=2 parameter=51
+discipline=0 category=1 parameter=0
+constant=F singleLevel=F soilModel=F
+
+QV_S
+1                     Surface specific humidity
+table=2 parameter=51 typeLevel=1
+discipline=0 category=1 parameter=0 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+RAIN_CON
+kg m-2                Convective rain
+table=201 parameter=113 typeLevel=1
+discipline=0 category=1 parameter=76 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+RAIN_GSP
+kg m-2                Large Scale Rain
+table=201 parameter=102 typeLevel=1
+discipline=0 category=1 parameter=77 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+RELHUM
+%                     Relative Humidity (with respect to water)
+table=2 parameter=52
+discipline=0 category=1 parameter=1
+constant=F singleLevel=F soilModel=F parent=T
+
+RHO_SNOW
+kg m-3                Snow density
+table=201 parameter=133 typeLevel=1
+discipline=0 category=1 parameter=61 typeSfc1=1
+constant=F singleLevel=T soilModel=T parent=T_2M
+
+RLAT
+radian                Geographic latitude
+table=202 parameter=114 typeLevel=1
+discipline=0 category=191 parameter=1 typeSfc1=1
+constant=T singleLevel=T soilModel=F parent=HSURF
+
+RLON
+radian                Geographic longitude
+table=202 parameter=115 typeLevel=1
+discipline=0 category=191 parameter=2 typeSfc1=1
+constant=T singleLevel=T soilModel=F parent=HSURF
+
+ROOTDP
+m                     Root depth of vegetation
+table=202 parameter=62 typeLevel=1
+discipline=2 category=0 parameter=32 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+RSMIN
+s m-1                 Minimal stomatal resistance
+table=201 parameter=212 typeLevel=1
+discipline=2 category=0 parameter=16 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+RSTOM
+s m-1                 Stomatal resistance
+table=-1 parameter=-1
+discipline=2 category=0 parameter=195 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+RUNOFF_G
+kg m-2                Water runoff, subsurface
+table=-1 parameter=-1
+discipline=2 category=0 parameter=5 typeSfc1=106 factorSfc1=1 valueSfc1=1 typeSfc2=106 factorSfc2=0 valueSfc2=1
+constant=F singleLevel=T soilModel=T
+
+RUNOFF_S
+kg m-2                Water runoff, surface
+table=2 parameter=90 typeLevel=112 valueSfc1=0 valueSfc2=10
+discipline=2 category=0 parameter=5 typeSfc1=106 factorSfc1=0 valueSfc1=0 typeSfc2=106 factorSfc2=1 valueSfc2=1
+constant=F singleLevel=T soilModel=T
+
+SNOWLMT
+m                     Height of snow fall limit above MSL
+table=201 parameter=85 typeLevel=4
+discipline=0 category=1 parameter=204 typeSfc1=4 typeSfc2=101
+constant=F singleLevel=T soilModel=F parent=T
+
+SNOW_PERCENT
+%                     Percentage of precipitation in snow
+table=250 parameter=65 typeLevel=1
+discipline=0 category=1 parameter=233 typeSfc1=1
+constant=F singleLevel=T soilModel=F parent=TOT_PREC
+
+SNOW_CON
+kg m-2                Convective snowfall water equivalent
+table=2 parameter=78 typeLevel=1
+discipline=0 category=1 parameter=55 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+SNOW_GSP
+kg m-2                Large snowfall water equivalent
+table=2 parameter=79 typeLevel=1
+discipline=0 category=1 parameter=56 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+SOBS_RAD
+W m-2                 Surface net downward shortwave flux
+table=2 parameter=111 typeLevel=1
+discipline=0 category=4 parameter=9 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+SOILTYP
+1                     Soil type
+table=202 parameter=57 typeLevel=1
+discipline=2 category=3 parameter=196 typeSfc1=1
+constant=T singleLevel=T soilModel=T
+
+SP
+m s-1                 Wind speed
+table=2 parameter=32
+discipline=0 category=2 parameter=1
+constant=F singleLevel=F soilModel=F parent=U keyUsedInProgram=FF
+
+SP_10M
+m s-1                 Wind speed at 10m above ground
+table=2 parameter=32 typeLevel=105 valueSfc1=10
+discipline=0 category=2 parameter=1 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F parent=U_10M keyUsedInProgram=FF_10M
+
+SSO_GAMMA
+1                     Anisotropy of sub-gridscale orography
+table=202 parameter=47 typeLevel=1
+discipline=0 category=3 parameter=24 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+SSO_SIGMA
+1                     Slope of sub-gridscale orography
+table=202 parameter=49 typeLevel=1
+discipline=0 category=3 parameter=22 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+SSO_STDH
+m                     Standard deviation of sub-gridscale orography
+table=202 parameter=46 typeLevel=1
+discipline=0 category=3 parameter=20 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+SSO_THETA
+rad                   Angle between principal axis of orography and east
+table=202 parameter=48 typeLevel=1
+discipline=0 category=3 parameter=21 typeSfc1=1
+constant=T singleLevel=T soilModel=F
+
+SYNMSG_BT_CL_IR10.8
+K                     MSG synthetic satellite - cloudy brightness temperature
+table=-1 parameter=-1
+discipline=3 category=1 parameter=14 satelliteSeries=333 satelliteNumber=72 instrumentType=207 valueWaveNumber=92592
+constant=F singleLevel=T soilModel=F parent=P rttovId=msg_1_seviri rttovChan=6
+
+SYNMSG_BT_CL_WV6.2
+K                     MSG synthetic satellite - cloudy brightness temperature
+table=-1 parameter=-1
+discipline=3 category=1 parameter=14 satelliteSeries=333 satelliteNumber=72 instrumentType=207 valueWaveNumber=161290
+constant=F singleLevel=T soilModel=F parent=P rttovId=msg_1_seviri rttovChan=2
+
+T
+K                     Air temperature
+table=2 parameter=11
+discipline=0 category=0 parameter=0
+constant=F singleLevel=F soilModel=F
+
+TCH
+1                     Turbulent transfer coefficient for heat and moisture (surface)
+table=201 parameter=171 typeLevel=1
+discipline=0 category=0 parameter=19 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+TCM
+1                     Turbulent transfer coefficient for momentum (surface)
+table=201 parameter=170 typeLevel=1
+discipline=0 category=2 parameter=29 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+TD
+K                     Dew point temperature
+table=250 parameter=17
+discipline=0 category=0 parameter=6
+constant=F singleLevel=F soilModel=F parent=QV
+
+TD_2M
+K                     Dew point temperature at 2m above ground
+table=2 parameter=17 typeLevel=105 valueSfc1=2
+discipline=0 category=0 parameter=6 typeSfc1=103 factorSfc1=0 valueSfc1=2
+constant=F singleLevel=T soilModel=F associatedMLev=TD
+
+THBS_RAD
+W m-2                 Surface net downward longwave flux
+table=2 parameter=112 typeLevel=1
+discipline=0 category=5 parameter=5 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+TKE
+m2 s-2                Turbulent kinetic energy
+table=201 parameter=152
+discipline=0 category=19 parameter=11
+constant=F singleLevel=F soilModel=F
+
+TMAX_2M
+K                     Maximum temperature at 2m above ground
+table=2 parameter=15 typeLevel=105 valueSfc1=2
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2 statProcType=2
+constant=F singleLevel=T soilModel=F
+
+TMIN_2M
+K                     Minimum temperature at 2m above ground
+table=2 parameter=16 typeLevel=105 valueSfc1=2
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2 statProcType=3
+constant=F singleLevel=T soilModel=F
+
+TOT_CON
+kg m-2                Total convective precipitation
+table=2 parameter=63 typeLevel=1
+discipline=0 category=1 parameter=37 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F parent=RAIN_CON
+
+TOT_GSP
+kg m-2                Total large scale precipitation
+table=2 parameter=62 typeLevel=1
+discipline=0 category=1 parameter=54 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F parent=RAIN_GSP
+
+TOT_PREC
+kg m-2                Total precipitation
+table=2 parameter=61 typeLevel=1
+discipline=0 category=1 parameter=52 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F parent=RAIN_GSP
+
+TOT_RAIN
+kg m-2                Total precipitation in rain
+table=250 parameter=62 typeLevel=1
+discipline=0 category=1 parameter=65 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F parent=RAIN_GSP
+
+TOT_SNOW
+kg m-2                Total precipitation in snow
+table=250 parameter=61 typeLevel=1
+discipline=0 category=1 parameter=66 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F parent=SNOW_GSP
+
+TQC
+kg m-2                Total column integrated cloud water
+table=2 parameter=76 typeLevel=1
+discipline=0 category=1 parameter=69 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+TQC_DIA
+kg m-2                Total column integrated cloud water (including sib-grid-scale contribution)
+table=2 parameter=76 typeLevel=1
+discipline=0 category=1 parameter=215 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+TQI
+kg m-2                Total column integrated cloud ice
+table=2 parameter=58 typeLevel=1
+discipline=0 category=1 parameter=70 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+TQR
+kg m-2                Total column integrated rain
+table=201 parameter=37 typeLevel=1
+discipline=0 category=1 parameter=45 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+TQS
+kg m-2                Total column integrated snow
+table=201 parameter=38 typeLevel=1
+discipline=0 category=1 parameter=46 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+TQV
+kg m-2                Total column integrated water vapor
+table=2 parameter=54 typeLevel=1
+discipline=0 category=1 parameter=64 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+T_B1_LK
+K                     Temperature at lower boundary of the upper layer of bottom sediment
+table=201 parameter=192 typeLevel=1
+discipline=1 category=2 parameter=4 typeSfc1=165
+constant=F singleLevel=T soilModel=T
+
+T_BOT_LK
+K                     Temperature at interface between water and lake bottom sediment
+table=201 parameter=191 typeLevel=1
+discipline=1 category=2 parameter=1 typeSfc1=162
+constant=F singleLevel=T soilModel=T
+
+T_BS_LK
+K                     Temperature at lower boundary of thermally active layer of lake bottom sediment
+table=201 parameter=190 typeLevel=1
+discipline=1 category=2 parameter=4 typeSfc1=164
+constant=T singleLevel=T soilModel=T
+
+T_G
+K                     Ground temperature (temperature at sfc-atm interface)
+table=2 parameter=11 typeLevel=1
+discipline=0 category=0 parameter=0 typeSfc1=1
+constant=F singleLevel=T soilModel=T parent=T_SNOW
+
+T_ICE
+K                     Sea ice temperature (at ice-atm interface)
+table=201 parameter=215 typeLevel=1
+discipline=10 category=2 parameter=8 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+T_MNW_LK
+K                     Mean temperature of lake water column
+table=201 parameter=194 typeLevel=1
+discipline=1 category=2 parameter=1 typeSfc1=1 typeSfc2=162
+constant=F singleLevel=T soilModel=T
+
+T_S
+K                     Soil surface temperature
+table=2 parameter=85 typeLevel=1
+discipline=2 category=3 parameter=18 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+T_SEA
+K                     Water temperature
+table=2 parameter=80 typeLevel=1
+discipline=10 category=3 parameter=0 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+T_SNOW_MUL
+K                     Temperature of the snow surface
+table=250 parameter=180
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=T
+
+T_SNOW
+K                     Temperature of the snow surface
+table=201 parameter=203 typeLevel=1
+discipline=0 category=0 parameter=18 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+T_SO
+K                     Soil temperature
+table=201 parameter=197
+discipline=2 category=3 parameter=18
+constant=F singleLevel=F soilModel=T
+
+T_WML_LK
+K                     Temparature of lake mixed layer
+table=201 parameter=193 typeLevel=1
+discipline=1 category=2 parameter=1 typeSfc1=1 typeSfc2=166
+constant=F singleLevel=T soilModel=T
+
+T_2M
+K                     Temperature at 2m above ground
+table=2 parameter=11 typeLevel=105 valueSfc1=2
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2
+constant=F singleLevel=T soilModel=F associatedMLev=T
+
+T_2M_CL
+K                     Climatological 2m temperature (used as lower bc for soil model)
+table=2 parameter=11 typeLevel=105 valueSfc1=2 timeRangeType=3
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2 statProcType=0
+constant=F singleLevel=T soilModel=F
+
+U
+m s-1                 Zonal wind
+table=2 parameter=33
+discipline=0 category=2 parameter=2
+constant=F singleLevel=F soilModel=F vCompIndex=1 associatedVComp=V
+
+U_10M
+m s-1                 Zonal wind at 10m above ground
+table=2 parameter=33 typeLevel=105 valueSfc1=10
+discipline=0 category=2 parameter=2 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F vCompIndex=1 associatedVComp=V_10M
+
+V
+m s-1                 Meridional wind
+table=2 parameter=34
+discipline=0 category=2 parameter=3
+constant=F singleLevel=F soilModel=F vCompIndex=2 associatedVComp=U
+
+VMAX_10M
+m s-1                 Maximum wind at 10 m above ground
+table=201 parameter=187 typeLevel=105 valueSfc1=10
+discipline=0 category=2 parameter=22 typeSfc1=103 factorSfc1=0 valueSfc1=10 statProcType=2
+constant=F singleLevel=T soilModel=F
+
+V_10M
+m s-1                 Meridional wind at 10m above ground
+table=2 parameter=34 typeLevel=105 valueSfc1=10
+discipline=0 category=2 parameter=3 typeSfc1=103 factorSfc1=0 valueSfc1=10
+constant=F singleLevel=T soilModel=F vCompIndex=2 associatedVComp=U_10M
+
+W
+m s-1                 Vertical velocity (geometric)
+table=2 parameter=40
+discipline=0 category=2 parameter=9
+constant=F singleLevel=F soilModel=F
+
+WW
+1                     Weather interpretation (WMO)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=25 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+W_I
+kg m-2                Plant canopy surface water
+table=201 parameter=200 typeLevel=1
+discipline=2 category=0 parameter=13 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+W_SNOW
+kg m-2                Snow depth water equivalent
+table=2 parameter=65 typeLevel=1
+discipline=0 category=1 parameter=60 typeSfc1=1
+constant=F singleLevel=T soilModel=T
+
+W_SO
+kg m-2                Soil moisture integrated over individual soil layers (ice + liquid)
+table=201 parameter=198
+discipline=2 category=3 parameter=20
+constant=F singleLevel=F soilModel=T
+
+W_SO_ICE
+kg m-2                Soil ice content integrated over individual soil layers
+table=201 parameter=199
+discipline=2 category=3 parameter=22
+constant=F singleLevel=F soilModel=T
+
+Z0
+m                     Surface roughness
+table=2 parameter=83 typeLevel=1
+discipline=2 category=0 parameter=1 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+
+!
+! ICON diagnostic 
+!
+
+
+ABSV
+s-1                   Absolute Vorticity
+table=-1 parameter=-1
+discipline=0 category=2 parameter=10
+constant=F singleLevel=F soilModel=F
+
+VABS
+s-2                   Absolute vorticity advection
+table=-1 parameter=-1
+discipline=0 category=2 parameter=197 
+constant=F singleLevel=F soilModel=F
+
+THETAE
+K                     Aequivalentpotentielle Temperatur
+table=-1 parameter=-1
+discipline=0 category=0 parameter=3
+constant=F singleLevel=F soilModel=F
+
+KO
+K                     KO index
+table=-1 parameter=-1
+discipline=0  category=7  parameter=3
+constant=F singleLevel=F soilModel=F
+
+CCL_GND
+m                     Hoehe der Konvektionsuntergrenze ueber Grund
+table=-1 parameter=-1
+discipline=0  category=6  parameter=26 typeSfc1=2 typeSfc2=1
+constant=F singleLevel=T soilModel=F
+
+CCL_NN
+m                     Hoehe der Konvektionsuntergrenze ueber nn
+table=-1 parameter=-1
+discipline=0 category=193  parameter=24 typeSfc2=101 typeSfc1=2 
+constant=F singleLevel=T soilModel=F
+
+CL_TYP
+Numeric               Kombination Niederschlag-Bewoelkung-Blauthermik (283..407)
+table=-1 parameter=-1
+discipline=0  category=19  parameter=194 
+constant=F singleLevel=F soilModel=F
+
+C_TYPE
+Numeric               Konvektionsart (0..4)
+table=-1 parameter=-1
+discipline=0  category=6  parameter=201 
+constant=F singleLevel=F soilModel=F
+
+DIDC_BASE_HFT
+hft                   Icing Base (hft) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=195 typeGenProc=0 typeSfc1=1
+constant=F singleLevel=F soilModel=F
+
+
+DIDC_MAX_BASE_HFT
+hft                   Icing Max Base (hft) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=196 typeGenProc=0 typeSfc1=1
+constant=F singleLevel=F soilModel=F
+
+DIDC_MAX_TOP_HFT
+hft                   Icing Max Top (hft) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=197 typeGenProc=0 typeSfc1=1
+constant=F singleLevel=F soilModel=F
+
+DIDC_TOP_HFT
+hfr                   Icing Top (hft) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=198  typeGenProc=0 typeSfc1=1
+constant=F singleLevel=F soilModel=F
+
+
+DIDC_VERT_CODE
+Numeric               Icing Vertical Code (1=continuous,2=discontinuous) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=199 typeGenProc=0 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+DIDC_MAX_CODE
+Numeric               Icing Max Code (1=light,2=moderate,3=severe) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=200 typeGenProc=0 typeSfc1=10
+constant=F singleLevel=F soilModel=F
+
+
+DISC_BASE_HFT
+hft                   Icing Base (hft) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=201 typeGenProc=0 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+DISC_SIG_BASE_HFT
+hft                   Icing Signifikant Base (hft) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=202 typeGenProc=0 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+
+DISC_SIG_TOP_HFT
+hft                   Icing Signifikant Top (hft) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=203 typeGenProc=0 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+DISC_TOP_HFT
+hft                   Icing Top (hft) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=204 typeGenProc=0 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+
+DISC_VERT_CODE
+Numeric               Icing Vertical Code (1=continuous,2=discontinuous) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=205 typeGenProc=0 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+DISC_SIG_CODE
+Numeric               Icing Signifikant Code (1=general,2=convective,3=stratiform,4=freezing)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=206 typeGenProc=0 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+FRONTO
+K2 m-2 s-1            Frontogenesefunktion
+table=-1 parameter=-1
+discipline=0 category=193 parameter=16
+constant=F singleLevel=F soilModel=F
+
+IPV
+K m2 kg-1 s-1         Isentrope potentielle Vorticity
+table=-1 parameter=-1
+discipline=0  category=193  parameter=25 typeSfc1=107
+constant=F singleLevel=F soilModel=F
+
+PIS_CODE
+Numeric               Icing scenario code (1=general,2=convective,3=stratiform,4=freezing)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=208 typeGenProc=2
+constant=F singleLevel=F soilModel=F
+
+PID_CODE
+Numeric               Icing Degree code (1=light 2=moderate 3=severe)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=207 typeGenProc=2
+constant=F singleLevel=F soilModel=F
+
+
+PIDC_BASE_HFT
+hft                   Icing Base (hft) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=195 typeGenProc=2 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+
+PIDC_MAX_BASE_HFT
+hft                   Icing Max Base (hft) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=196 typeGenProc=2 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+PIDC_MAX_TOP_HFT
+hft                   Icing Max Top (hft) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=197 typeGenProc=2 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+PIDC_TOP_HFT
+hft                   Icing top - Degree composit (hft)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=198 typeSfc1=1 typeGenProc=2
+constant=F singleLevel=T soilModel=F
+
+PIDC_VERT_CODE
+Numeric               Icing Vertical Code (1=continuous,2=discontinuous) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=199 typeGenProc=2 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+
+PIDC_MAX_CODE
+Numeric               Icing Max Code (1=light,2=moderate,3=severe) - Icing Degree Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=200 typeGenProc=2 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+PISC_BASE_HFT
+hft                   Icing Base (hft) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=201 typeGenProc=2 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+PISC_SIG_BASE_HFT
+hft                   Icing Signifikant Base (hft) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=202 typeGenProc=2 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+PISC_SIG_TOP_HFT
+hft                   Icing Signifikant Top (hft) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=203 typeGenProc=2 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+PISC_TOP_HFT
+hft                   Icing top - Scenario composit (hft)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=204 typeSfc1=1 typeGenProc=2
+constant=F singleLevel=T soilModel=F
+
+PISC_VERT_CODE
+Numeric               Icing Vertical Code (1=continuous,2=discontinuous) - Icing Scenario Composit
+table=-1 parameter=-1
+discipline=0 category=19 parameter=205 typeGenProc=2 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+PISC_SIG_CODE
+Numeric               Icing Signifikant Code (1=general,2=convective,3=stratiform,4=freezing)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=206 typeGenProc=2 typeSfc1=10
+constant=F singleLevel=T soilModel=F
+
+PTHETA
+Pa                    Druck einer isentropen Flaeche
+table=-1 parameter=-1
+discipline=0 category=3 parameter=0 typeSfc1=107
+constant=F singleLevel=F soilModel=F
+
+TWATER
+kg m-2                Total Column integrated water (all components incl. precipitation)
+table=-1 parameter=-1
+discipline=0 category=1 parameter=78
+constant=F singleLevel=F soilModel=F
+
+UP
+m s-1                 Wind X-Komponente auf isentropen Flaechen
+table=-1 parameter=-1
+discipline=0 category=193 parameter=5 
+constant=F singleLevel=F soilModel=F
+
+VP
+m s-1                 Wind Y-Komponente auf isentropen Flaechen
+table=-1 parameter=-1
+discipline=0 category=193 parameter=6
+constant=F singleLevel=F soilModel=F
+
+DID_CODE
+Numeric               Icing Degree Code (1=light,2=moderate,3=severe)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=207 typeGenProc=0
+constant=F singleLevel=F soilModel=F
+
+DIS_CODE
+Numeric               Icing Scenario Code (1=general,2=convective,3=stratiform,4=freezing)
+table=-1 parameter=-1
+discipline=0 category=19 parameter=208 typeGenProc=0
+constant=F singleLevel=F soilModel=F
+
+
+QVN
+m2 kg-1 s-1           Vektor senkrecht zu den Isothermen
+table=-1 parameter=-1
+discipline=0  category=193  parameter=4
+constant=F singleLevel=F soilModel=F
+
+WDIV
+s-1                   Winddivergenz
+table=-1 parameter=-1
+discipline=0  category=193  parameter=3
+constant=F singleLevel=F soilModel=F
+
+ADVOR
+m3 kg-1 s-1           Geostrophic thickness advection
+table=-1 parameter=-1
+discipline=0  category=193  parameter=1 typeSfc1=100 factorSfc1=-4 valueSfc1=5 typeSfc2=100 factorSfc2=-3 valueSfc2=85
+constant=F singleLevel=T soilModel=F
+
+ADVOR_2
+m3 kg-1 s-1           Geostrophic thickness advection
+table=-1 parameter=-1
+discipline=0  category=193  parameter=1 typeSfc1=100 factorSfc1=-4 valueSfc1=5 typeSfc2=100 factorSfc2=-5 valueSfc2=1
+constant=F singleLevel=T soilModel=F
+
+ADVOR_3
+m3 kg-1 s-1           Geostrophic thickness advection
+table=-1 parameter=-1
+discipline=0  category=193  parameter=1 typeSfc1=100 factorSfc1=-3 valueSfc1=85 typeSfc2=100 factorSfc2=-5 valueSfc2=1
+constant=F singleLevel=T soilModel=F
+
+
+ADRTG
+m3 kg-1 s-1           Schichtdickenadvektion
+table=-1 parameter=-1
+discipline=0  category=193  parameter=2
+constant=F singleLevel=F soilModel=F
+
+W_SHAER
+s-1                   Vertical speed shear
+table=-1 parameter=-1
+discipline=0  category=2  parameter=25 
+constant=F singleLevel=F soilModel=F
+
+SRH
+J kg-1                Storm relative helicity
+table=-1 parameter=-1
+discipline=0  category=7  parameter=8
+constant=F singleLevel=F soilModel=F
+
+VORG
+s-1                   Geostrophic vorticity
+table=-1 parameter=-1
+discipline=0  category=193  parameter=7
+constant=F singleLevel=F soilModel=F
+
+ADVORG
+s-2                   Geostrophic vorticity advection
+table=-1 parameter=-1
+discipline=0  category=193  parameter=0
+constant=F singleLevel=F soilModel=F
+
+PT
+K                     Potential temperature
+table=-1 parameter=-1
+discipline=0  category=0  parameter=2
+constant=F singleLevel=F soilModel=F
+
+PT1M
+K                     Perceived temperature
+table=-1 parameter=-1
+discipline=0  category=192  parameter=1
+constant=F singleLevel=F soilModel=F
+
+SUL_PROB
+Numeric               Probability to perceive sultriness
+table=-1 parameter=-1
+discipline=0  category=192  parameter=3
+constant=F singleLevel=F soilModel=F
+
+
+UVI_CL_COR
+Numeric               UV Index, clouded sky; corrected for albedo, aerosol, altitude and clouds
+table=-1 parameter=-1
+discipline=0  category=4  parameter=197
+constant=F singleLevel=F soilModel=F
+
+UVI_CS_COR
+Numeric               UV Index, clear sky; corrected for albedo, aerosol and altitude
+table=-1 parameter=-1
+discipline=0  category=4  parameter=195
+constant=F singleLevel=F soilModel=F
+
+UVI_MAX_CL
+Numeric               UV Index, clouded sky, maximum
+table=-1 parameter=-1
+discipline=0  category=4  parameter=51 statProcType=2
+constant=F singleLevel=F soilModel=F
+
+
+UVI_MAX_CS
+Numeric               UV Index, clear sky, maximum
+table=-1 parameter=-1
+discipline=0  category=4  parameter=50 statProcType=2
+constant=F singleLevel=F soilModel=F
+
+UVI_MAX_H
+Numeric               Time of maximum of UV Index, clouded
+table=-1 parameter=-1
+discipline=0  category=4  parameter=194 statProcType=2
+constant=F singleLevel=F soilModel=F
+
+TOT_O3
+DU                    Total ozone
+table=-1 parameter=-1
+discipline=0  category=14  parameter=0 statProcType=1
+constant=F singleLevel=F soilModel=F
+
+LAPSE_RATE 
+K m-1                 Lapse rate
+table=-1 parameter=-1
+discipline=0  category=0  parameter=8
+constant=F singleLevel=F soilModel=F
+
+
+!
+! Additional coding used by ICON-ART
+!
+
+
+ACCEMISS_DUSTA
+kg m-2                Accumulated dust Emission for mode 1
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=3 constituentType=62001 modeNumber=1 distFuncType=8 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+ACCEMISS_DUSTB
+kg m-2                Accumulated dust Emission for mode 2
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=3 constituentType=62001 modeNumber=2 distFuncType=8 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+ACCEMISS_DUSTC
+kg m-2                Accumulated dust Emission for mode 3
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=3 constituentType=62001 modeNumber=3 distFuncType=8 typeSfc1=1 statProcType=1
+constant=F singleLevel=T soilModel=F
+
+ALNU
+m-3                   Alder (alnus) pollen concentration
+table=244 parameter=91
+discipline=0 category=20 parameter=59 constituentType=62100
+constant=F singleLevel=F soilModel=F
+
+ALNUfr
+%                     Fraction of land occupied by alder (alnus)
+table=244 parameter=92 typeLevel=1
+discipline=2 category=0 parameter=4 constituentType=62100 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+ALNUreso
+m-2                   Number of alder (alnus) pollen in the reservoir
+table=244 parameter=93 typeLevel=1
+discipline=0 category=20 parameter=192 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALNUresn
+m-2                   Number of alder (alnus) pollen released into the reservoir
+table=244 parameter=94 typeLevel=1
+discipline=0 category=20 parameter=193 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALNUsdes
+1                     State of the alder (alnus) season (eq. zero before and after season, the higher, the more plants are flowering)
+table=244 parameter=95 typeLevel=1
+discipline=0 category=20 parameter=194 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALNUhcem
+1                     Height correction for emission (decreasing emission with height) for alder (alnus)
+table=244 parameter=96 typeLevel=1
+discipline=0 category=20 parameter=195 constituentType=62100 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+ALNUress
+m-2                   Sum of released alder (alnus) pollen into the reservoir (daily sum)
+table=244 parameter=97 typeLevel=1
+discipline=0 category=20 parameter=193 constituentType=62100 typeSfc1=1 statProcType=11
+constant=F singleLevel=T soilModel=F
+
+ALNUrprec
+kg m-2                Precipitation reservoir (liquid water on the flowers, preventing them from flowering) of alder (alnus)
+table=244 parameter=98 typeLevel=1
+discipline=2 category=0 parameter=13 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALNUctsum
+degC                  Cumulated weighted 2m temperature sum of daily values for alder (alnus) pollen
+table=244 parameter=99 typeLevel=1
+discipline=0 category=20 parameter=196 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALNUtthrs
+degC                  Cumulated 2m temperature sum threshold for the start of alder (alnus) pollen season (climatological)
+table=244 parameter=100 typeLevel=1
+discipline=0 category=20 parameter=197 constituentType=62100 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+ALNUtthre
+degC                  Cumulated 2m temperature sum threshold for the end of alder (alnus) pollen season (climatological)
+table=244 parameter=101 typeLevel=1
+discipline=0 category=20 parameter=198 constituentType=62100 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+ALNUsaisn
+days                  Number of days since the start of alder (alnus) pollen season (if present day is in the season; zero outside season)
+table=244 parameter=102 typeLevel=1
+discipline=0 category=20 parameter=199 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALNUsaisl
+days                  Length of alder (alnus) pollen season
+table=244 parameter=103 typeLevel=1
+discipline=0 category=20 parameter=201 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALNUfe
+m-2 s-1               Pollen number emission flux for alder (alnus)
+table=244 parameter=104 typeLevel=1
+discipline=0 category=20 parameter=202 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+ALNUsaisa
+days                  Number of days since the start of alder (alnus) pollen season (if present day is outside the season: length of current season)  
+table=244 parameter=105 typeLevel=1
+discipline=0 category=20 parameter=200 constituentType=62100 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBR
+m-3                   Ragweed (ambrosia) pollen concentration
+table=244 parameter=31
+discipline=0 category=20 parameter=59 constituentType=62200
+constant=F singleLevel=F soilModel=F
+
+AMBRfr
+%                     Fraction of land occupied by ragweed (ambrosia)
+table=244 parameter=32 typeLevel=1
+discipline=2 category=0 parameter=4 constituentType=62200 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+AMBRreso
+m-2                   Number of ragweed (ambrosia) pollen in the reservoir
+table=244 parameter=33 typeLevel=1
+discipline=0 category=20 parameter=192 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBRresn
+m-2                   Number of ragweed (ambrosia) pollen released into the reservoir
+table=244 parameter=34 typeLevel=1
+discipline=0 category=20 parameter=193 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBRsdes
+1                     State of the ragweed (ambrosia) season (eq. zero before and after season, the higher, the more plants are flowering)
+table=244 parameter=35 typeLevel=1
+discipline=0 category=20 parameter=194 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBRhcem
+1                     Height correction for emission (decreasing emission with height) for ragweed (ambrosia)
+table=244 parameter=36 typeLevel=1
+discipline=0 category=20 parameter=195 constituentType=62200 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+AMBRress
+m-2                   Sum of released ragweed (ambrosia) pollen into the reservoir (daily sum)
+table=244 parameter=37 typeLevel=1
+discipline=0 category=20 parameter=193 constituentType=62200 typeSfc1=1 statProcType=11
+constant=F singleLevel=T soilModel=F
+
+AMBRrprec
+kg m-2                Precipitation reservoir (liquid water on the flowers, preventing them from flowering) of ragweed (ambrosia)
+table=244 parameter=38 typeLevel=1
+discipline=2 category=0 parameter=13 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBRctsum
+degC                  Cumulated weighted 2m temperature sum of daily values for ragweed (ambrosia) pollen
+table=244 parameter=39 typeLevel=1
+discipline=0 category=20 parameter=196 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBRtthrs
+degC                  Cumulated 2m temperature sum threshold for the start of ragweed (ambrosia) pollen season (climatological)
+table=244 parameter=40 typeLevel=1
+discipline=0 category=20 parameter=197 constituentType=62200 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+AMBRtthre
+degC                  Cumulated 2m temperature sum threshold for the end of ragweed (ambrosia) pollen season (climatological)
+table=244 parameter=41 typeLevel=1
+discipline=0 category=20 parameter=198 constituentType=62200 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+AMBRsaisn
+days                  Number of days since the start of ragweed (ambrosia) pollen season (if present day is in the season; zero outside season)
+table=244 parameter=42 typeLevel=1
+discipline=0 category=20 parameter=199 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBRsaisl
+days                  Length of ragweed (ambrosia) pollen season
+table=244 parameter=43 typeLevel=1
+discipline=0 category=20 parameter=201 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBRfe
+m-2 s-1               Pollen number emission flux for ragweed (ambrosia)
+table=244 parameter=44 typeLevel=1
+discipline=0 category=20 parameter=202 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AMBRsaisa
+days                  Number of days since the start of ragweed (ambrosia) pollen season (if present day is outside the season: length of current season)  
+table=244 parameter=45 typeLevel=1
+discipline=0 category=20 parameter=200 constituentType=62200 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+AOD_ASH
+1                     Diagnostic volcanic ash optical depth
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=102 aerosolType=62025
+constant=F singleLevel=F soilModel=F
+
+AOD_DUST
+1                     Diagnostic mineral dust optical depth
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=102 aerosolType=62001
+constant=F singleLevel=F soilModel=F
+
+AOD_SEAS
+1                     Diagnostic sea salt optical depth
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=102 aerosolType=62008
+constant=F singleLevel=F soilModel=F
+
+ASH_HML_MAX
+m                     Diagnostic height of model layer with maximal total mass concentration of volcanic ash
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=62 typeSfc1=1 constituentType=62025 
+constant=F singleLevel=T soilModel=F
+
+ASH_MAX_TOTAL_MC_LAYER
+kg m-3                Diagnostic maximum total mass concentration of volcanic ash in a layer
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=61 constituentType=62025 
+constant=F singleLevel=F soilModel=F
+
+ASH_MAX_TOTAL_MC_SFC_200
+kg m-3                Diagnostic maximum total mass concentration of volcanic ash in layer SFC-FL200
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=61 typeSfc1=100 factorSfc1=0 valueSfc1=46500 typeSfc2=100 factorSfc2=0 valueSfc2=101325 constituentType=62025 
+constant=F singleLevel=T soilModel=F
+
+ASH_MAX_TOTAL_MC_200_350
+kg m-3                Diagnostic maximum total mass concentration of volcanic ash in layer FL200-FL350
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=61 typeSfc1=100 factorSfc1=0 valueSfc1=24000 typeSfc2=100 factorSfc2=0 valueSfc2=46500 constituentType=62025
+constant=F singleLevel=T soilModel=F
+
+ASH_MAX_TOTAL_MC_SFC_100
+kg m-3                Diagnostic maximum total mass concentration of volcanic ash in layer SFC-FL100
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=61 typeSfc1=100 factorSfc1=0 valueSfc1=70000 typeSfc2=100 factorSfc2=0 valueSfc2=101325 constituentType=62025
+constant=F singleLevel=T soilModel=F
+
+ASH_MAX_TOTAL_MC_350_550
+kg m-3                Diagnostic maximum total mass concentration of volcanic ash in layer FL350-FL550
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=61 typeSfc1=100 factorSfc1=0 valueSfc1=9100 typeSfc2=100 factorSfc2=0 valueSfc2=24000 constituentType=62025 
+constant=F singleLevel=T soilModel=F
+
+ASH_MAX_TOTAL_MC_100_245
+kg m-3                Diagnostic maximum total mass concentration of volcanic ash in layer FL100-FL245
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=61 typeSfc1=100 factorSfc1=0 valueSfc1=38500 typeSfc2=100 factorSfc2=0 valueSfc2=70000 constituentType=62025 
+constant=F singleLevel=T soilModel=F
+
+ASH_MAX_TOTAL_MC_245_390
+kg m-3                Diagnostic maximum total mass concentration of volcanic ash in layer FL245-FL390
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=61 typeSfc1=100 factorSfc1=0 valueSfc1=20000 typeSfc2=100 factorSfc2=0 valueSfc2=38500 constituentType=62025 
+constant=F singleLevel=T soilModel=F
+
+ASH_MAX_TOTAL_MC_390_530
+kg m-3                Diagnostic maximum total mass concentration of volcanic ash in layer FL390-FL530
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=61 typeSfc1=100 factorSfc1=0 valueSfc1=10000 typeSfc2=100 factorSfc2=0 valueSfc2=20000 constituentType=62025 
+constant=F singleLevel=T soilModel=F
+
+ASH_TOTAL_MC
+kg m-3                Diagnostic total mass concentration of volcanic ash
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=0 constituentType=62025 
+constant=F singleLevel=F soilModel=F
+
+ASH_TOTAL_MC_VI
+kg m-2                Diagnostic total column of mass concentration of volcanic ash
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=1 typeSfc1=10 constituentType=62025 
+constant=F singleLevel=T soilModel=F
+
+ASH1
+1                     Prognostic mass mixing ratio of volcanic ash particles for bin number 1
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62025 modeNumber=1 distFuncType=1
+constant=F singleLevel=F soilModel=F
+
+ASH2
+1                     Prognostic mass mixing ratio of volcanic ash particles for bin number 2
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62025 modeNumber=2 distFuncType=1
+constant=F singleLevel=F soilModel=F
+
+ASH3
+1                     Prognostic mass mixing ratio of volcanic ash particles for bin number 3
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62025 modeNumber=3 distFuncType=1
+constant=F singleLevel=F soilModel=F
+
+ASHA
+1                     Modal prognostic mass mixing ratio of volcanic ash particles (fine mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62025 modeNumber=1 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+ASHB
+1                     Modal prognostic mass mixing ratio of volcanic ash particles (medium mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62025 modeNumber=2 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+ASHC
+1                     Modal prognostic mass mixing ratio of volcanic ash particles (carse mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62025 modeNumber=3 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+ASHA0
+kg-1                  Modal prognostic specific number concentration of volcanic ash particles (fine mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62025 modeNumber=1 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+ASHB0
+kg-1                  Modal prognostic specific number concentration of volcanic ash particles (medium mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62025 modeNumber=2 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+ASHC0
+kg-1                  Modal prognostic specific number concentration of volcanic ash particles (coarse mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62025 modeNumber=3 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+Ba-140
+Bq m-3                Air concentration of Barium-140
+table=202 parameter=227
+discipline=0 category=18 parameter=10 constituentType=30175
+constant=F singleLevel=F soilModel=F
+
+Ba-140d
+Bq m-2                Dry deposition of Barium-140
+table=202 parameter=228 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30175
+constant=F singleLevel=T soilModel=F
+
+Ba-140w
+Bq m-2                Wet deposition of Barium-140
+table=202 parameter=229 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30175
+constant=F singleLevel=T soilModel=F
+
+BETU
+m-3                   Birch (betula) pollen concentration
+table=244 parameter=1
+discipline=0 category=20 parameter=59 constituentType=62101
+constant=F singleLevel=F soilModel=F
+
+BETUfr
+%                     Fraction of land occupied by birch (betula)
+table=244 parameter=2 typeLevel=1
+discipline=2 category=0 parameter=4 constituentType=62101 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+BETUreso
+m-2                   Number of birch (betula) pollen in the reservoir
+table=244 parameter=3 typeLevel=1
+discipline=0 category=20 parameter=192 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+BETUresn
+m-2                   Number of birch (betula) pollen released into the reservoir
+table=244 parameter=4 typeLevel=1
+discipline=0 category=20 parameter=193 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+BETUsdes
+1                     State of the birch (betula) season (eq. zero before and after season, the higher, the more plants are flowering)
+table=244 parameter=5 typeLevel=1
+discipline=0 category=20 parameter=194 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+BETUhcem
+1                     Height correction for emission (decreasing emission with height) for birch (betula)
+table=244 parameter=6 typeLevel=1
+discipline=0 category=20 parameter=195 constituentType=62101 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+BETUress
+m-2                   Sum of released birch (betula) pollen into the reservoir (daily sum)
+table=244 parameter=7 typeLevel=1
+discipline=0 category=20 parameter=193 constituentType=62101 typeSfc1=1 statProcType=11
+constant=F singleLevel=T soilModel=F
+
+BETUrprec
+kg m-2                Precipitation reservoir (liquid water on the flowers, preventing them from flowering) of birch (betula)
+table=244 parameter=8 typeLevel=1
+discipline=2 category=0 parameter=13 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+BETUctsum
+degC                  Cumulated weighted 2m temperature sum of daily values for birch (betula) pollen
+table=244 parameter=9 typeLevel=1
+discipline=0 category=20 parameter=196 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+BETUtthrs
+degC                  Cumulated 2m temperature sum threshold for the start of birch (betula) pollen season (climatological)
+table=244 parameter=10 typeLevel=1
+discipline=0 category=20 parameter=197 constituentType=62101 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+BETUtthre
+degC                  Cumulated 2m temperature sum threshold for the end of birch (betula) pollen season (climatological)
+table=244 parameter=11 typeLevel=1
+discipline=0 category=20 parameter=198 constituentType=62101 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+BETUsaisn
+days                  Number of days since the start of birch (betula) pollen season (if present day is in the season; zero outside season)
+table=244 parameter=12 typeLevel=1
+discipline=0 category=20 parameter=199 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+BETUsaisl
+days                  Length of birch (betula) pollen season
+table=244 parameter=13 typeLevel=1
+discipline=0 category=20 parameter=201 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+BETUfe
+m-2 s-1               Pollen number emission flux for birch (betula)
+table=244 parameter=14 typeLevel=1
+discipline=0 category=20 parameter=202 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+BETUsaisa
+days                  Number of days since the start of birch (betula) pollen season (if present day is outside the season: length of current season)  
+table=244 parameter=15 typeLevel=1
+discipline=0 category=20 parameter=200 constituentType=62101 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+Cs-137
+Bq m-3                Air concentration of Caesium-137
+table=202 parameter=203
+discipline=0 category=18 parameter=10 constituentType=30172
+constant=F singleLevel=F soilModel=F
+
+Cs-137d
+Bq m-2                Dry deposition of Caesium-137
+table=202 parameter=204 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30172
+constant=F singleLevel=T soilModel=F
+
+Cs-137w
+Bq m-2                Wet deposition of Caesium-137
+table=202 parameter=205 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30172
+constant=F singleLevel=T soilModel=F
+
+DUSTA
+1                     Modal prognostic mass mixing ratio of mineral dust particles (fine mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62001 modeNumber=1 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+DUSTB
+1                     Modal prognostic mass mixing ratio of mineral dust particles (medium mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62001 modeNumber=2 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+DUSTC
+1                     Modal prognostic mass mixing ratio of mineral dust particles (coarse mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62001 modeNumber=3 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+DUSTA0
+kg-1                  Modal prognostic specific number concentration of mineral dust particles (fine mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62001 modeNumber=1 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+DUSTB0
+kg-1                  Modal prognostic specific number concentration of mineral dust particles (medium mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62001 modeNumber=2 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+DUSTC0
+kg-1                  Modal prognostic specific number concentration of mineral dust particles (coarse mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62001 modeNumber=3 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+EMISS_DUSTA
+kg m-2 s-1            Emission rate of dust for mode 1
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=3 constituentType=62001 modeNumber=1 distFuncType=8 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+EMISS_DUSTB
+kg m-2 s-1            Emission rate of dust for mode 2
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=3 constituentType=62001 modeNumber=2 distFuncType=8 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+EMISS_DUSTC
+kg m-2 s-1            Emission rate of dust for mode 3
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=3 constituentType=62001 modeNumber=3 distFuncType=8 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+HBAS_ASH_CLD
+m                     Base for given threshold of mass density for volcanic ash cloud
+table=-1 parameter=-1 
+discipline=0 category=3 parameter=6 typeSfc1=21 constituentType=62025 
+constant=F singleLevel=F soilModel=F
+
+HBAS_DUST_CLD
+m                     Base for given threshold of mass density for volcanic ash cloud
+table=-1 parameter=-1 
+discipline=0 category=3 parameter=6 typeSfc1=21 constituentType=62001 
+constant=F singleLevel=F soilModel=F
+
+HTOP_ASH_CLD
+m                     Top for given threshold of mass density for volcanic ash cloud
+table=-1 parameter=-1 
+discipline=0 category=3 parameter=6 typeSfc1=22 constituentType=62025 
+constant=F singleLevel=F soilModel=F
+
+HTOP_DUST_CLD
+m                     Top for given threshold of mass density for mineral dust cloud
+table=-1 parameter=-1 
+discipline=0 category=3 parameter=6 typeSfc1=22 constituentType=62001 
+constant=F singleLevel=F soilModel=F
+
+I-131a
+Bq m-3                Air concentration of Iodine 131 aerosol
+table=202 parameter=200
+discipline=0 category=18 parameter=10 constituentType=30141
+constant=F singleLevel=F soilModel=F
+
+I-131ad
+Bq m-2                Dry deposition of Iodine-131 aerosols
+table=202 parameter=201 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30141
+constant=F singleLevel=T soilModel=F
+
+I-131aw
+Bq m-2                Wet deposition of Iodine-131 aerosols
+table=202 parameter=202 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30141
+constant=F singleLevel=T soilModel=F
+
+I-131g
+Bq m-3                Air concentration of gaseous Iodine-131
+table=202 parameter=221
+discipline=0 category=18 parameter=10 constituentType=30138
+constant=F singleLevel=F soilModel=F
+
+I-131gd
+Bq m-2                Dry deposition of gaseous Iodine-131
+table=202 parameter=222 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30138
+constant=F singleLevel=T soilModel=F
+
+I-131gw
+Bq m-2                Wet deposition of gaseous Iodine-131
+table=202 parameter=223 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30138
+constant=F singleLevel=T soilModel=F
+
+I-131o
+Bq m-3                Air concentration of organic Iodine-131
+table=202 parameter=224
+discipline=0 category=18 parameter=10 constituentType=30139
+constant=F singleLevel=F soilModel=F
+
+I-131od
+Bq m-2                Dry deposition of organic Iodine-131
+table=202 parameter=225 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30139
+constant=F singleLevel=T soilModel=F
+
+I-131ow
+Bq m-2                Wet deposition of organic Iodine-131
+table=202 parameter=226 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30139
+constant=F singleLevel=T soilModel=F
+
+Kr-85
+Bq m-3                Air concentration of Krypton-85
+table=202 parameter=212
+discipline=0 category=18 parameter=10 constituentType=30059
+constant=F singleLevel=F soilModel=F
+
+Kr-85d
+Bq m-2                Dry deposition of Krypton-85
+table=202 parameter=213 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30059
+constant=F singleLevel=T soilModel=F
+
+Kr-85w
+Bq m-2                Wet deposition of Krypton-85
+table=202 parameter=214 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30059
+constant=F singleLevel=T soilModel=F
+
+POAC
+m-3                   Grass (poaceae) pollen concentration
+table=244 parameter=61
+discipline=0 category=20 parameter=59 constituentType=62300
+constant=F singleLevel=F soilModel=F
+
+POACfr
+%                     Fraction of land occupied by grasses (poaceae)
+table=244 parameter=62 typeLevel=1
+discipline=2 category=0 parameter=4 constituentType=62300 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+POACreso
+m-2                   Number of grass (poaceae) pollen in the reservoir
+table=244 parameter=63 typeLevel=1
+discipline=0 category=20 parameter=192 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+POACresn
+m-2                   Number of grass (poaceae) pollen released into the reservoir
+table=244 parameter=64 typeLevel=1
+discipline=0 category=20 parameter=193 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+POACsdes
+1                     State of the grass (poaceae) season (eq. zero before and after season, the higher, the more plants are flowering)
+table=244 parameter=65 typeLevel=1
+discipline=0 category=20 parameter=194 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+POAChcem
+1                     Height correction for emission (decreasing emission with height) for grasses (poaceae)
+table=244 parameter=66 typeLevel=1
+discipline=0 category=20 parameter=195 constituentType=62300 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+POACress
+m-2                   Sum of released grass (poaceae) pollen into the reservoir (daily sum)
+table=244 parameter=67 typeLevel=1
+discipline=0 category=20 parameter=193 constituentType=62300 typeSfc1=1 statProcType=11
+constant=F singleLevel=T soilModel=F
+
+POACrprec
+kg m-2                Precipitation reservoir (liquid water on the flowers, preventing them from flowering) of grasses (poaceae)
+table=244 parameter=68 typeLevel=1
+discipline=2 category=0 parameter=13 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+POACctsum
+degC                  Cumulated weighted 2m temperature sum of daily values for grass (poaceae) pollen
+table=244 parameter=69 typeLevel=1
+discipline=0 category=20 parameter=196 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+POACtthrs
+degC                  Cumulated 2m temperature sum threshold for the start of the grass (poaceae) pollen season (climatological)
+table=244 parameter=70 typeLevel=1
+discipline=0 category=20 parameter=197 constituentType=62300 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+POACtthre
+degC                  Cumulated 2m temperature sum threshold for the end of the grass (poaceae) pollen season (climatological)
+table=244 parameter=71 typeLevel=1
+discipline=0 category=20 parameter=198 constituentType=62300 typeSfc1=1 typeGenProc=9
+constant=F singleLevel=T soilModel=F
+
+POACsaisn
+days                  Number of days since the start of the grass (poaceae) pollen season (if present day is in the season; zero outside season)
+table=244 parameter=72 typeLevel=1
+discipline=0 category=20 parameter=199 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+POACsaisl
+days                  Length of the grass (poaceae) pollen season
+table=244 parameter=73 typeLevel=1
+discipline=0 category=20 parameter=201 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+POACfe
+m-2 s-1               Pollen number emission flux for grasses (poaceae)
+table=244 parameter=74 typeLevel=1
+discipline=0 category=20 parameter=202 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+POACsaisa
+days                  Number of days since the start of the grass (poaceae) pollen season (if present day is outside the season: length of current season)  
+table=244 parameter=75 typeLevel=1
+discipline=0 category=20 parameter=200 constituentType=62300 typeSfc1=1
+constant=F singleLevel=T soilModel=F
+
+Ru-103
+Bq m-3                Air concentration of Ruthenium-103
+table=202 parameter=194
+discipline=0 category=18 parameter=10 constituentType=30102
+constant=F singleLevel=F soilModel=F
+
+Ru-103d
+Bq m-2                Dry deposition of Ruthenium-103
+table=202 parameter=195 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30102
+constant=F singleLevel=T soilModel=F
+
+Ru-103w
+Bq m-2                Wet deposition of Ruthenium-103
+table=202 parameter=196 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30102
+constant=F singleLevel=T soilModel=F
+
+SEASA
+1                     Modal prognostic mass mixing ratio of sea salt particles (fine mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62008 modeNumber=1 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+SEASB
+1                     Modal prognostic mass mixing ratio of sea salt particles (medium mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62008 modeNumber=2 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+SEASC
+1                     Modal prognostic mass mixing ratio of sea salt particles (coarse mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=2 constituentType=62008 modeNumber=3 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+SEASA0
+kg-1                  Modal prognostic specific number concentration of sea salt particles (fine mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62008 modeNumber=1 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+SEASB0
+kg-1                  Modal prognostic specific number concentration of sea salt particles (medium mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62008 modeNumber=2 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+SEASC0
+kg-1                  Modal prognostic specific number concentration of sea salt particles (coarse mode)
+table=-1 parameter=-1 
+discipline=0 category=20 parameter=60 constituentType=62008 modeNumber=3 distFuncType=7
+constant=F singleLevel=F soilModel=F
+
+Sr-90
+Bq m-3                Air concentration of Strontium-90
+table=202 parameter=197
+discipline=0 category=18 parameter=10 constituentType=30067
+constant=F singleLevel=F soilModel=F
+
+Sr-90d
+Bq m-2                Dry deposition of Strontium-90
+table=202 parameter=198 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30067
+constant=F singleLevel=T soilModel=F
+
+Sr-90w
+Bq m-2                Wet deposition of Strontium-90
+table=202 parameter=199 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30067
+constant=F singleLevel=T soilModel=F
+
+Te-132
+Bq m-3                Air concentration of Tellurium-132
+table=202 parameter=206
+discipline=0 category=18 parameter=10 constituentType=30129
+constant=F singleLevel=F soilModel=F
+
+Te-132d
+Bq m-2                Dry deposition of Tellurium-132
+table=202 parameter=207 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30129
+constant=F singleLevel=T soilModel=F
+
+Te-132w
+Bq m-2                Wet deposition of Tellurium-132
+table=202 parameter=208 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30129
+constant=F singleLevel=T soilModel=F
+
+Xe-133
+Bq m-3                Air concentration of Xenon-133
+table=202 parameter=218
+discipline=0 category=18 parameter=10 constituentType=30161
+constant=F singleLevel=F soilModel=F
+
+Xe-133d
+Bq m-2                Dry deposition of Xenon-133
+table=202 parameter=219 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30161
+constant=F singleLevel=T soilModel=F
+
+Xe-133w
+Bq m-2                Wet deposition of Xenon-133
+table=202 parameter=220 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30161
+constant=F singleLevel=T soilModel=F
+
+Zr-95
+Bq m-3                Air concentration of Zirconium-95
+table=202 parameter=209
+discipline=0 category=18 parameter=10 constituentType=30079
+constant=F singleLevel=F soilModel=F
+
+Zr-95d
+Bq m-2                Dry deposition of Zirconium-95
+table=202 parameter=210 typeLevel=1
+discipline=0 category=18 parameter=12 typeSfc1=1 constituentType=30079
+constant=F singleLevel=T soilModel=F
+
+Zr-95w
+Bq m-2                Wet deposition of Zirconium-95
+table=202 parameter=211 typeLevel=1
+discipline=0 category=18 parameter=11 typeSfc1=1 constituentType=30079
+constant=F singleLevel=T soilModel=F
+
+
+!
+! Auxiliary fields required by RTTOV library to compute synthetic satellite products
+! No associated GRIB coding
+!
+
+
+RTTOV_STYPE
+1                     Surface type for RTTOV library (0:land, 1:sea, 2:sea-ice)
+table=-1 parameter=-1 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=T
+
+RTTOV_WTYPE
+1                     Water type for RTTOV library (0:fresh water, 1:ocean water)
+table=-1 parameter=-1 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=T
+
+RTTOV_FRSNOW
+1                     Snow fraction, between 0 and 1
+table=-1 parameter=-1 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=T
+
+RTTOV_TOPCLOUD
+Pa                    Cloud top
+table=-1 parameter=-1 typeLevel=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+RTTOV_FRCLOUD_TOT
+1                     Total cloud fraction, between 0 and 1
+table=-1 parameter=-1 typeLevel=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+RTTOV_FRCLOUD
+1                     Cloud fraction, between 0 and 1
+table=-1 parameter=-1 typeLevel=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=F
+
+RTTOV_CLOUD_1
+g m-3                 Cloud of type stratus continental
+table=-1 parameter=-1 typeLevel=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=F
+
+RTTOV_CLOUD_3
+g m-3                 Cloud of type cumulus continental
+table=-1 parameter=-1 typeLevel=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=F
+
+RTTOV_CLOUD_6
+g m-3                 Cloud of type cirrus
+table=-1 parameter=-1 typeLevel=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=F
+
+
+!
+! Auxiliary fields produced by some operators
+! No associated GRIB coding
+! (use 'new_field_id' to set a different identity)
+!
+
+
+UPSCALED_VGRAD_T
+K m-1                 Upscaled vertical gradient of temperature 
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+ 
+UPSCALED_VGRAD_QV
+m-1                   Upscaled vertical gradient of specific humidity 
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+ 
+VARIANCE_TOT_PREC
+kg2 m-4               Variance of total precipitation
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+TRACER
+undefined             Scalar tracer
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=F
+
+AD2D_TRACER
+undefined             Advection of scalar tracer projected on model surface
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=F soilModel=F parent=TRACER:1
+
+REF_HEIGHT
+m                     Reference height expressed in meter above msl
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+REF_PRESSURE
+Pa                    Reference pressure 
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+DIFF_HEIGHT
+m                     Height difference
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+INV_SCALE_HEIGHT
+m-1                   Scaling coefficient expressed in 1/meter
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+ 
+COUNT_EVENT
+1                     Number of events 
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+ 
+LOG_FIELD
+1                     Natural logarithm of field
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+NUMERIC_COEFFICIENT
+1                     Numeric coefficient
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+TIME_INDEX
+1                     Validation date index
+table=-1 parameter=-1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+
+!
+! additional elements for WAWFOR/WAFC (aviaton)
+!
+
+
+ICAHT
+m                     ICAO Standard Atmosphere reference height
+table=-1 parameter=-1
+discipline=0 category=3 parameter=3
+constant=F singleLevel=F soilModel=F
+
+RAIN_CON_D
+kg m-2                Convective rain
+table=201 parameter=113 typeLevel=1
+discipline=0 category=1 parameter=76 typeSfc1=1 statProcType=4
+constant=F singleLevel=T soilModel=F
+
+RAIN_GSP_D
+kg m-2                Large Scale Rain
+table=201 parameter=102 typeLevel=1
+discipline=0 category=1 parameter=77 typeSfc1=1 statProcType=4
+constant=F singleLevel=T soilModel=F
+
+SNOW_CON_D
+kg m-2                Convective snowfall water equivalent
+table=2 parameter=78 typeLevel=1
+discipline=0 category=1 parameter=55 typeSfc1=1 statProcType=4
+constant=F singleLevel=T soilModel=F
+
+SNOW_GSP_D
+kg m-2                Large scale snowfall water equivalent
+table=2 parameter=79 typeLevel=1
+discipline=0 category=1 parameter=56 typeSfc1=1 statProcType=4
+constant=F singleLevel=T soilModel=F
+
+TOT_PREC_D
+kg m-2                Total precipitation
+table=2 parameter=61 typeLevel=1
+discipline=0 category=1 parameter=52 typeSfc1=1 statProcType=4
+constant=F singleLevel=T soilModel=F
+

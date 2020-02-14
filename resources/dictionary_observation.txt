@@ -1,0 +1,180 @@
+! Dictionary: specification of field properties for fieldextra (v11.4 upwards)
+!-----------------------------------------------------------------------------------------------------------------------
+! Within fieldextra, fields are identified by a unique string; the associated characteristics
+! are defined in one or more dictionaries (a set of key/values where the key is the field name).
+!
+! File format:
+! ------------
+! All blank lines and all lines beginning with an exclamation mark are ignored.
+! The first interpreted lines define the name of the dictionary and the type of model.
+! All following interpreted lines define the set of key/values.
+!
+! a. Global information
+!    The first interpreted lines define global information valid for all keys of
+!    the current dictionary.
+!
+!         DICTIONARY_NAME 'name'          (any string)
+!         MODEL_TYPE 'type'               (e.g. cosmo, ifs, gme; blank is allowed)
+!         PRODUCT_CATEGORY 'cat1,...'     (optional; e.g. 'determinist'; blank is allowed)
+!         GRIB2_MASTER_TABLE_VERSION nn   (optional; e.g. 11; blank is allowed)
+!         GRIB2_LOCAL_TABLE_VERSION vv    (optional; e.g. 1; blank is allowed only when
+!                                          no local code is used)
+!
+!    The dictionary name is used to refer to a specific dictionary in the namelist of
+!    fieldextra. The model type is used to interpret local values in the dictionary and
+!    in input records. Furthermore, in combination with PRODUCT_CATEGORY, this information
+!    is used to define the products compatible with the current dictionary.
+!
+!    Both DICTIONARY_NAME and MODEL_TYPE entries are compulsory. Empty value of MODEL_TYPE
+!    is supported and means any possible value (e.g. for dictionary refering to observations,
+!    for default dictionary valid for any model).
+!
+!    The PRODUCT_CATEGORY entry is optional; it refers to a comma separated list of
+!    compatible product categories (see description of default_product_category in
+!    README.user for a list of supported values). Empty value is supported and means
+!    any possible value.
+!
+!    The values of GRIB2_MASTER_TABLE_VERSION and GRIB2_LOCAL_TABLE_VERSION refer to the
+!    minimal version of the GRIB 2 tables which are required to interpret the GRIB 2
+!    information used in the current dictionary.
+!
+! b. Key / values (repeated as many times as necessary)
+!    The values associated whith each key are grouped into 5 lines:
+!
+!    Line 1 (Key)
+!      + Key is the field short name (no embedded blanks)
+!    Line 2 (Units, description)          
+!      + Units are the physical units of the field
+!      + Description is the field (long) name
+!    Line 3 (set of GRIB 1 attributes as key=value) 
+!      + The first surface is the top surface, the second surface (if any) is the bottom surface, 
+!        in a geographic meaning
+!    Line 4 (set of GRIB 2 attributes as key=value) 
+!      + Some GRIB 2 attributes, such as the surface value or the central wave number, are coded 
+!        with the two integers scaleFactorOf... and scaledValueOf..., the attribute value being 
+!        10**(-scaleFactorOf...) * scaledValueOf... ; in the dictionary below, scaleFactorOf...
+!        is named 'factor...' and scaledValueOf... is named 'value...'
+!      + The first surface is the top surface, the second surface (if any) is the bottom surface, 
+!        in a geographic meaning
+!    Line 5 (other field characteristics, expressed as a set of key=value)
+!      + constant: true if the field is constant in time (associated validation date is ignored)
+!      + singleLevel: true if the field is a single level field
+!      + passiveSfc2: second surface of associated field is passive when:
+!                       (1) singleLevel=false
+!                       (2) passiveSfc2=true
+!                       (3) first surface is indexed model level
+!                       (4) second surface is either undefined or not associated with any value
+!                     Passive second surface means that the second surface information is only 
+!                     used for documenting the level characteristics (incl. vertical coefficients)
+!                     and is not considered when matching levels. More precisely, for passive
+!                     second surface:
+!                     > the surface type is removed by import and reset by export;
+!                     > when processing GRIB 2 records, it is expected that the vertical 
+!                       coordinate coefficients are coded as value of the second fix surface; 
+!                       this is considered both by import and export.
+!                       If found in input record, the coefficients are transfered in the
+!                       output record; otherwise, if suitable vertical coefficients are
+!                       available from another source (e.g. namelist), they will be used.
+!                     This non standard use of the GRIB 2 second surface is expected by the
+!                     COSMO model for the height of the half levels.
+!      + soilModel: true if the field belongs to the soil model (soil, vegetation... but also snow and lake)
+!      + vCompIndex: order of vector component, or -1 if not a 2d vector field
+!                (vector basis as defined by bit 5 of GRIB code table 7)
+!      + associatedVComp: short name of of associated vector component, for 2d vector fields
+!      + associatedMLev: short name of multi-level field which can be associated to build a full vertical profile.
+!      + parent: short name of main parent field (if any).
+!                When the operator to compute the field requires a lateral halo around the target area,
+!                the size of this halo has to be specified; in this case the string format is:
+!                               main_parent_key:halo_size
+!                A halo size of 999 means the full field has to be provided.
+!      + rttovId: string characterizing the RTTOV coefficient file used to compute the associated field;
+!                the full name of the coefficients file is rtcoef_<rttovID>.dat, and the file should
+!                be accessible at the location rttov_coefs_path specified in &GlobalResource.
+!      + rttovChan: channel number in RTTOV coefficient file; required to compute the associated field.
+!      + multiTLevParent: true if multiple time levels of (some of) the parent fields are required.
+!      + localInfoNumberUse: meaning of GRIB 2 localInformationNumber, if any; if localInformationNumber
+!                is used for something different than just differentiating different fields representing
+!                the same physical quantity, this should be documented here. The value of localInfoNumberUse
+!                can be any meaningful string; however, if the corresponding characteristics is computed in
+!                fieldextra, a pre-defined value has to be used. Currently this is the case for:
+!                             poper=azimut_class <--> localInfoNumberUse=numberOfClasses
+!      + keyUsedInProgram: when set, the short name which has to be used in any namelist and any resource
+!                files is the one defined by 'keyUsedInProgram', and not the original key. 
+!
+!    Algorithm used to derive the field short name associated with a GRIB record:
+!      + list of matching dictionary entries is derived according to the rules below
+!      + GRIB 1 attributes are used when working with GRIB 1 records, GRIB 2 attributes
+!        are used when working with GRIB 2 records
+!      + dictionary attributes explicitely defined only match when the same value is
+!        available in the decoded record
+!      + missing dictionary attributes, or dictionary attributes with values set to -1,
+!        always match (wildcard)
+!      + entry with highest explicit matches is selected (i.e. wildcards have lower
+!        priority)
+!      + a short name is associated with a record if, and only if, a unique dictionary
+!        entry can be associated with the decoded record
+!
+!-----------------------------------------------------------------------------------------------------------------------
+DICTIONARY_NAME observation
+MODEL_TYPE not_available
+PRODUCT_CATEGORY 
+GRIB2_MASTER_TABLE_VERSION 
+GRIB2_LOCAL_TABLE_VERSION 
+
+!-----------------------------------------------------------------------------------------------------------------------
+!Line1: Short name (string)
+!-----------------------------------------------------------------------------------------------------------------------
+!Line2: Description (fixed format according to template: A20,2X,A140)
+!Units                Name
+!AAAAAAAAAAAAAAAAAAA  AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA...
+!-----------------------------------------------------------------------------------------------------------------------
+!Line3: GRIB 1 information, blank separated key=value groups
+!       key :   table parameter alternateTable alternateParameter
+!      type : integer   integer        integer            integer 
+!   required:     yes       yes             no                 no  
+!    default:      -1        -1             -1                 -1
+!
+!       key : typeLevel valueSfc1 valueSfc2 timeRangeType localElemNumber
+!      type :   integer   integer   integer       integer         integer
+!   required:        no       no         no            no              no
+!    default:        -1       -1         -1            -1              -1
+!-----------------------------------------------------------------------------------------------------------------------
+!Line4: GRIB 2 information, blank separated key=value groups
+!       key : discipline category parameter statProcType typeSfc1 factorSfc1 valueSfc1 typeSfc2 factorSfc2 valueSfc2 
+!      type :    integer  integer   integer      integer  integer    integer   integer  integer    integer   integer
+!   required:       yes       yes       yes           no      no          no        no       no         no        no
+!    default:        -1        -1        -1           -1      -1           0        -1       -1          0        -1
+!
+!       key : typeGenProc satelliteSeries satelliteNumber instrumentType factorWaveNumber valueWaveNumber
+!      type :     integer         integer         integer        integer          integer         integer
+!   required:          no              no              no             no               no              no
+!    default:          -1              -1              -1             -1                0              -1
+!
+!       key : constituentType aerosolType modeNumber distFuncType localInfoNumber
+!      type :         integer     integer    integer      integer         integer
+!   required:              no          no         no           no              no
+!    default:              -1          -1         -1           -1              -1
+!-----------------------------------------------------------------------------------------------------------------------
+!Line5: additional information on field characteristics, blank separated key=value groups
+!       key : constant singleLevel passiveSfc2 soilModel vCompIndex associatedVComp associatedMLev
+!      type :  logical     logical     logical   logical    integer          string         string
+!   required:      yes         yes          no       yes        no              no             no
+!    default:        F           F           F         F        -1              ''             ''
+!
+!       key :   parent rttovId rttovChan multiTLevParent localInfoNumberUse keyUsedInProgram
+!      type :   string  string   integer         logical             string           string
+!   required:       no      no        no              no                 no               no
+!    default:       ''      ''        -1               F                 ''               ''
+!-----------------------------------------------------------------------------------------------------------------------
+
+RAD_PI
+?                     Unknown
+table=2 parameter=61 typeLevel=1
+discipline=-1 category=-1 parameter=-1
+constant=F singleLevel=T soilModel=F
+
+TminD
+degC                  Daily minimum temperature
+table=2 parameter=16 alternateTable=131 alternateParameter=202 typeLevel=105 valueSfc1=2
+discipline=0 category=0 parameter=0 typeSfc1=103 factorSfc1=0 valueSfc1=2 statProcType=3
+constant=F singleLevel=T soilModel=F
