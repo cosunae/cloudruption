@@ -17,6 +17,7 @@ class ActionType(IntEnum):
     Data = 1
     EndData = 2
 
+
 @dataclass
 class MsgKey:
     action_type: int
@@ -60,15 +61,15 @@ def plot2d(arr):
 class DataRequest:
     fieldname_: str
     patches_: []
-    npatches_: None
     domain_: None
     nlevels_: None
+    msgKey_: None
 
     def __init__(self, fieldname):
         self.fieldname_ = fieldname
         self.patches_ = []
-        self.npatches_ = None
         self.domain_ = None
+        self.msgKey_ = None
 
     def fillHeader(self, msgkey: MsgKey):
         self.setNLevels(msgkey.levlen)
@@ -76,28 +77,33 @@ class DataRequest:
     def insert(self, patch: fieldop.SinglePatch, msgKey: MsgKey):
         self.patches_.append(patch)
 
-        if not self.npatches_:
-            self.npatches_ = msgKey.npatches
+        if not self.msgKey_:
+            self.msgKey_ = msgKey
             if self.domain_:
                 self.domain_.isize = msgKey.totlonlen
                 self.domain_.jsize = msgKey.totlatlen
             else:
                 self.domain_ = fieldop.DomainConf(msgKey.totlonlen, msgKey.totlatlen, -1)
+        else:
+            assert msgKey.npatches == self.msgKey_.npatches
+
         # TODO check in the else the keymsg is compatible with others msgs
 
+    # The NLevels can not come via the msgKey, but rather on a separate header msg
     def setNLevels(self, nlevels):
+        print("SETT")
         self.nlevels_ = nlevels
         if not self.domain_:
-            self.domain_ = fieldop.DomainConf(0, 0, 0)
-        else:
             self.domain_ = fieldop.DomainConf(0, 0, nlevels)
+        else:
+            self.domain_.levels = nlevels
 
     def complete(self) -> bool:
-        print("TEST ", self.fieldname_, len(self.patches_), self.npatches_)
+        print("TEST ", self.fieldname_, len(self.patches_), self.msgKey_.npatches)
         # Not a single patch was inserted
-        if not self.npatches_ or not self.nlevels_:
+        if not self.msgKey_ or not self.nlevels_:
             return False
-        return (len(self.patches_) == self.npatches_ * self.nlevels_) and len(self.patches_) != 0
+        return (len(self.patches_) == self.msgKey_.npatches * self.nlevels_) and len(self.patches_) != 0
 
 
 @dataclass
@@ -119,7 +125,7 @@ class DataRegistry:
             print("GATHERING ", field)
 
             dataReq = self.dataRequests_[field]
-            df = fieldop.DistributedField(field, dataReq.domain_, dataReq.npatches_)
+            df = fieldop.DistributedField(field, dataReq.domain_, dataReq.msgKey_.npatches)
 
             for patch in dataReq.patches_:
                 df.insertPatch(patch)
@@ -194,6 +200,7 @@ class DataRegistryStreaming(DataRegistry):
             field = msKey.key[0]
 
             if msKey.action_type == int(ActionType.HeaderData):
+                print("FOUNDHEADER")
                 self.dataRequests_[field].fillHeader(msKey)
 
             if msKey.action_type != int(ActionType.Data):
@@ -261,6 +268,8 @@ class DataRegistryFile(DataRegistry):
             if self.format_ == 'grib':
                 self.sendGribData(topics)
 
+    def wait(self):
+        pass
     def sendNetCDFData(self, topics):
         ncdfData = Dataset(self.filename_, "r")
 
@@ -306,7 +315,7 @@ class DataRegistryFile(DataRegistry):
             return candidateFields[0]
         else:
             candidateFieldsO = candidateFields.copy()
-            candidateFields=[]
+            candidateFields = []
             for field in candidateFieldsO:
                 params = gribDict[field]
                 if (not "typeLevel" in params and msg["indicatorOfTypeOfLevel"] == "ml"):
@@ -318,7 +327,7 @@ class DataRegistryFile(DataRegistry):
             elif len(candidateFields) == 1:
                 return candidateFields[0]
             else:
-                candidateFieldsO=candidateFields.copy()
+                candidateFieldsO = candidateFields.copy()
                 candidateFields = []
                 for field in candidateFieldsO:
                     params = gribDict[field]
@@ -343,7 +352,7 @@ class DataRegistryFile(DataRegistry):
             for i in range(len(grib)):
                 msg = ecc.GribMessage(grib)
 
-                #print(msg.keys())
+                # print(msg.keys())
                 fieldname = self.getGribFieldname(msg)
                 if not fieldname:
                     print('WARNING: found a grib field with no match in table : ', msg['cfVarName'],
@@ -398,7 +407,7 @@ class DataRegistryFile(DataRegistry):
 
                     msgkey = MsgKey(1, fieldname, 1, 0, 0, 0, lev, 0, 0, ni,
                                     ni, 60, ni, nj, msg["longitudeOfFirstGridPoint"], msg["longitudeOfLastGridPoint"],
-                                    msg["latitudeOfFirstGridPoint"], msg["latitudeOfLastGridPoint"], )
+                                    msg["latitudeOfFirstGridPoint"], msg["latitudeOfLastGridPoint"])
                     self.dataRequests_[fieldname].insert(
                         fieldop.SinglePatch(0, 0, ni, nj, lev, var), msgkey)
 
