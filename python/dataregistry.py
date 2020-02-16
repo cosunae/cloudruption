@@ -27,8 +27,6 @@ class MsgKey:
     ilonstart: int
     jlatstart: int
     level: int
-    dlon: float
-    dlat: float
     lonlen: int
     latlen: int
     levlen: int
@@ -91,7 +89,6 @@ class DataRequest:
 
     # The NLevels can not come via the msgKey, but rather on a separate header msg
     def setNLevels(self, nlevels):
-        print("SETT")
         self.nlevels_ = nlevels
         if not self.domain_:
             self.domain_ = fieldop.DomainConf(0, 0, nlevels)
@@ -270,6 +267,7 @@ class DataRegistryFile(DataRegistry):
 
     def wait(self):
         pass
+
     def sendNetCDFData(self, topics):
         ncdfData = Dataset(self.filename_, "r")
 
@@ -352,7 +350,7 @@ class DataRegistryFile(DataRegistry):
             for i in range(len(grib)):
                 msg = ecc.GribMessage(grib)
 
-                # print(msg.keys())
+                #                print(msg.keys())
                 fieldname = self.getGribFieldname(msg)
                 if not fieldname:
                     print('WARNING: found a grib field with no match in table : ', msg['cfVarName'],
@@ -405,7 +403,7 @@ class DataRegistryFile(DataRegistry):
                     #                                    fieldop.SinglePatch(istart, jstart, iend - istart, jend - jstart, lev, subpatch),
                     #                                    msgkey)
 
-                    msgkey = MsgKey(1, fieldname, 1, 0, 0, 0, lev, 0, 0, ni,
+                    msgkey = MsgKey(1, fieldname, 1, 0, 0, 0, lev, ni,
                                     ni, 60, ni, nj, msg["longitudeOfFirstGridPoint"], msg["longitudeOfLastGridPoint"],
                                     msg["latitudeOfFirstGridPoint"], msg["latitudeOfLastGridPoint"])
                     self.dataRequests_[fieldname].insert(

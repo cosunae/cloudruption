@@ -10,7 +10,6 @@ struct KeyMessage {
   int npatches;
   int myrank;
   size_t ilon_start, jlat_start, lev;
-  float dlon, dlat;
   size_t lonlen, latlen, levlen;
   size_t totlonlen, totlatlen;
   float longitudeOfFirstGridPoint, longitudeOfLastGridPoint,
