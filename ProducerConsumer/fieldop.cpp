@@ -8,8 +8,6 @@
 
 using namespace pybind11::literals;
 
-PYBIND11_MODULE(config, m) { pybind11::class_<DomainConf>(m, "DomainConf"); }
-
 PYBIND11_MODULE(fieldop, m) {
   pybind11::class_<DomainConf>(m, "DomainConf")
       .def(pybind11::init<int, int, int>())
@@ -64,6 +62,9 @@ PYBIND11_MODULE(fieldop, m) {
           throw std::runtime_error("Incompatible buffer format!");
 
         return field3d(info.shape[0], info.shape[1], info.shape[2],
+                       std::array<size_t, 3>{info.strides[0] / sizeof(float),
+                                             info.strides[1] / sizeof(float),
+                                             info.strides[2] / sizeof(float)},
                        (float *)info.ptr);
       }))
       .def(

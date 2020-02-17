@@ -67,5 +67,7 @@ target_link_libraries(consumer PRIVATE ${RDKAFKA_LIBRARIES})
 target_link_libraries(consumer PRIVATE "stdc++fs")
 
 pybind11_add_module(fieldop fieldop.cpp DistributedField.cpp)
+pybind11_add_module(testfieldop testfieldop.cpp)
+
 
 #install(TARGETS ${python_libname} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)

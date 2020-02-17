@@ -35,25 +35,23 @@ public:
     data_ = static_cast<float *>(malloc(i * j * k * sizeof(float)));
   }
   field3d(size_t i, size_t j, size_t k, float *data)
-      : m_i(i), m_j(j), m_k(k), m_strides({i * j * k, k, k * j}) {
-    data_ = data;
-  }
+      : m_i(i), m_j(j), m_k(k), m_strides({i * j * k, k, k * j}), data_(data) {}
 
-  field3d(size_t i, size_t j, size_t k, std::array<size_t, 3> strides)
-      : m_i(i), m_j(j), m_k(k), m_strides(strides) {
-    data_ = static_cast<float *>(malloc(i * j * k * sizeof(float)));
-  }
+  field3d(size_t i, size_t j, size_t k, std::array<size_t, 3> strides,
+          float *data)
+      : m_i(i), m_j(j), m_k(k), m_strides(strides), data_(data) {}
 
   float &operator()(int i, int j, int k) {
-    if (k + j * m_strides[1] + i * m_strides[2] >= m_i * m_j * m_k) {
+    if (i * m_strides[0] + j * m_strides[1] + k * m_strides[2] >=
+        m_i * m_j * m_k) {
       std::cout << "RRRRRRERROR i:" << i << " j:" << j << " k: " << k
                 << "m_i:" << m_i << " m_j:" << m_j << " m_k: " << m_k
                 << std::endl;
     }
-    return data_[k + j * m_strides[1] + i * m_strides[2]];
+    return data_[i * m_strides[0] + j * m_strides[1] + k * m_strides[2]];
   }
   float operator()(int i, int j, int k) const {
-    return data_[k + j * m_strides[1] + i * m_strides[2]];
+    return data_[i * m_strides[0] + j * m_strides[1] + k * m_strides[2]];
   }
   float *data() { return data_; }
   size_t isize() const { return m_i; }
