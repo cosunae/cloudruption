@@ -31,7 +31,7 @@ public:
                 (bbox.limits_[2][1] - bbox.limits_[2][0] + 1)) {}
 
   field3d(size_t i, size_t j, size_t k)
-      : m_i(i), m_j(j), m_k(k), m_strides({j * k, k, 1}) {
+      : m_i(i), m_j(j), m_k(k), m_strides({1, i, i * j}) {
     data_ = static_cast<float *>(malloc(i * j * k * sizeof(float)));
   }
 
@@ -57,6 +57,7 @@ public:
   size_t isize() const { return m_i; }
   size_t jsize() const { return m_j; }
   size_t ksize() const { return m_k; }
+  std::array<size_t, 3> strides() const { return m_strides; }
 };
 
 class field2d {
@@ -65,7 +66,7 @@ class field2d {
   float *m_data;
 
 public:
-  field2d(size_t i, size_t j) : m_i(i), m_j(j), m_strides({j, 1}) {
+  field2d(size_t i, size_t j) : m_i(i), m_j(j), m_strides({1, i}) {
     m_data = static_cast<float *>(malloc(i * j * sizeof(float)));
   }
   field2d(size_t i, size_t j, std::array<size_t, 2> strides, float *data)
@@ -92,6 +93,7 @@ public:
   float *data() const { return m_data; }
   size_t isize() const { return m_i; }
   size_t jsize() const { return m_j; }
+  std::array<size_t, 2> strides() const { return m_strides; }
 };
 
 class SinglePatch : public field2d {

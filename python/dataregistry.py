@@ -126,7 +126,6 @@ class DataRegistry:
             df = fieldop.DistributedField(field, dataReq.domain_, dataReq.msgKey_.npatches)
 
             for patch in dataReq.patches_:
-#                plot2d(np.array(patch, copy=False))
                 df.insertPatch(patch)
 
             bbox = df.bboxPatches()
@@ -204,11 +203,9 @@ class DataRegistryStreaming(DataRegistry):
             if msKey.action_type != int(ActionType.Data):
                 return
 
-            plot2d(np.reshape(al, (msKey.lonlen, msKey.latlen), order='F'))
             self.dataRequests_[field].insert(
                 fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen, msKey.level,
-                                    np.reshape(al, (msKey.lonlen, msKey.latlen))), msKey)
-
+                                    np.reshape(al, (msKey.lonlen, msKey.latlen), order='F')), msKey)
 
 class OutputDataRegistry:
     pass

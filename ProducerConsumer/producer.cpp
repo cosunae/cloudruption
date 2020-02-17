@@ -1,5 +1,6 @@
 #include "Config.h"
 #include "KeyMessage.h"
+#include "SinglePatch.h"
 #include <assert.h>
 #include <bits/stdc++.h>
 #include <iostream>
@@ -112,8 +113,8 @@ class FieldHandler {
   std::optional<FieldProp> domainFieldProp_;
   std::optional<FieldProp> patchFieldProp_;
 
-  float *fglob_ = nullptr;
-  float *fsubd_ = nullptr;
+  field3d *fglob_ = nullptr;
+  field3d *fsubd_ = nullptr;
 
 public:
   FieldHandler(int mpirank, int mpisize, std::string filename)
@@ -210,7 +211,8 @@ public:
       size_t levelsize = gridconf_.latlen * gridconf_.lonlen * sizeof(float);
       size_t fieldsize = levelsize * gridconf_.levlen;
 
-      fglob_ = (float *)malloc(fieldsize);
+      fglob_ =
+          new field3d(gridconf_.lonlen, gridconf_.latlen, gridconf_.levlen);
     }
     return 0;
   }
@@ -222,7 +224,10 @@ public:
   const SubDomainConf &getSubdomainconf() const { return subdomainconf_; }
   const GridConf &getGridconf() const { return gridconf_; }
 
-  float *getSubdomainField() const { return fsubd_; }
+  field3d &getSubdomainField() const {
+    assert(fsubd_);
+    return *fsubd_;
+  }
 
   void printConf() {
     if (mpirank_ == 0) {
@@ -249,7 +254,8 @@ public:
       size_t countv[4] = {1, gridconf_.levlen, gridconf_.latlen,
                           gridconf_.lonlen};
 
-      if ((retval = nc_get_vara_float(ncid, uid, startv, countv, fglob_)))
+      if ((retval =
+               nc_get_vara_float(ncid, uid, startv, countv, fglob_->data())))
         ERR(retval);
 
       if ((retval = nc_close(ncid)))
@@ -263,7 +269,8 @@ public:
   }
 
   void scatterSubdomains() {
-    float *ft = (float *)malloc(patchFieldProp_->totalsize_ * sizeof(float));
+    field3d ft(patchFieldProp_->getSizes()[0], patchFieldProp_->getSizes()[1],
+               patchFieldProp_->getSizes()[2]);
 
     float *fscat = nullptr;
     if (mpirank_ == 0) {
@@ -304,7 +311,7 @@ public:
 
                 fscat[i * istridet + j * jstridet + k * kstridet +
                       bi * bistridet + bj * bjstridet] =
-                    fglob_[globalFieldProp_->idx({iglb, jglb, (size_t)k})];
+                    (*fglob_)(iglb, jglb, (size_t)k);
               }
             }
           }
@@ -314,7 +321,7 @@ public:
 
     MPI_Scatter(fscat,
                 gridconf_.isizepatch * gridconf_.jsizepatch * gridconf_.levlen,
-                MPI_FLOAT, ft,
+                MPI_FLOAT, ft.data(),
                 gridconf_.isizepatch * gridconf_.jsizepatch * gridconf_.levlen,
                 MPI_FLOAT, 0, MPI_COMM_WORLD);
 
@@ -324,18 +331,16 @@ public:
     if (fsubd_) {
       free(fsubd_);
     }
-    fsubd_ = (float *)malloc(subdomainconf_.isize * subdomainconf_.jsize *
-                             subdomainconf_.levels * sizeof(float));
+    fsubd_ = new field3d(subdomainconf_.isize, subdomainconf_.jsize,
+                         subdomainconf_.levels);
 
     for (size_t k = 0; k < gridconf_.levlen; ++k) {
       for (size_t j = 0; j < subdomainconf_.jsize; ++j) {
         for (size_t i = 0; i < subdomainconf_.isize; ++i) {
-          fsubd_[domainFieldProp_->idx({i, j, k})] =
-              ft[patchFieldProp_->idx({i, j, k})];
+          (*fsubd_)(i, j, k) = ft(i, j, k);
         }
       }
     }
-    free(ft);
   }
 };
 
@@ -492,9 +497,7 @@ public:
             fieldname, partition_,
             RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
             /* Value */
-            static_cast<void *>(
-                &(fHandler_.getSubdomainField()[fHandler_.getDomainFieldProp()
-                                                    .idx({0, 0, lev})])),
+            static_cast<void *>(&(fHandler_.getSubdomainField()(0, 0, lev))),
             fHandler_.getDomainFieldProp().getSizes()[0] *
                 fHandler_.getDomainFieldProp().getSizes()[1] * sizeof(float),
             /* Key */

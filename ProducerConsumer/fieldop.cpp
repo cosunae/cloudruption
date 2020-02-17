@@ -52,8 +52,7 @@ PYBIND11_MODULE(fieldop, m) {
             /*Python struct-style format˓→descriptor*/ 2,
             /*Number of dimensions*/ {m.isize(), m.jsize()}, /*Buffer
                                                                 dimensions*/
-            {sizeof(float) * m.jsize(),
-             /*Strides (in bytes) for each˓→index*/ sizeof(float)});
+            {m.strides()[0] * sizeof(float), m.strides()[1] * sizeof(float)});
       });
 
   pybind11::class_<field3d>(m, "field3d", pybind11::buffer_protocol())
@@ -99,8 +98,8 @@ PYBIND11_MODULE(fieldop, m) {
             /*Python struct-style format˓→descriptor*/ 3,
             /*Number of dimensions*/ {m.isize(), m.jsize(), m.ksize()}, /*Buffer
                                                               dimensions*/
-            {sizeof(float) * m.jsize() * m.ksize(), sizeof(float) * m.ksize(),
-             /*Strides (in bytes) for each˓→index*/ sizeof(float)});
+            {m.strides()[0] * sizeof(float), m.strides()[1] * sizeof(float),
+             m.strides()[2] * sizeof(float)});
       });
 
   pybind11::class_<SinglePatch>(m, "SinglePatch", pybind11::buffer_protocol())
@@ -136,7 +135,6 @@ PYBIND11_MODULE(fieldop, m) {
             /*Python struct-style format˓→descriptor*/ 2,
             /*Number of dimensions*/ {m.isize(), m.jsize()}, /*Buffer
                                                               dimensions*/
-            {sizeof(float) * m.jsize(),
-             /*Strides (in bytes) for each˓→index*/ sizeof(float)});
+            {m.strides()[0] * sizeof(float), m.strides()[1] * sizeof(float)});
       });
 }

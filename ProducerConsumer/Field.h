@@ -15,7 +15,6 @@ struct FieldProp {
                             sizes.at(0), // start with first element
                             [](size_t tot, size_t el) { return tot * el; })) {}
 
-  size_t idx(std::vector<size_t> pos);
   std::vector<size_t> strides_;
   std::vector<size_t> sizes_;
   size_t totalsize_;
