@@ -24,7 +24,7 @@ public:
   NetCDFDumper(const std::vector<std::string> &topics) : topics_(topics) {}
   NetCDFDumper(const NetCDFDumper &) = default;
 
-  void createFile(std::string filename, const Field &field);
+  void createFile(std::string filename, const FieldProp &field);
   void closeFile(std::string filename, std::string topic);
 
   void writeVar(std::string variableName, float *f);

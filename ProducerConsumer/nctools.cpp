@@ -30,7 +30,7 @@ void NetCDFDumper::closeFile(std::string filename, std::string topic) {
   regTopics.fileClosed = true;
 }
 
-void NetCDFDumper::createFile(std::string filename, const Field &field) {
+void NetCDFDumper::createFile(std::string filename, const FieldProp &field) {
   int retval;
   int ncid = -1;
   std::array<int, 3> dims{-1, -1, -1};

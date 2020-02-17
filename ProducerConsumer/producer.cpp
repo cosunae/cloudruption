@@ -109,9 +109,9 @@ class FieldHandler {
   std::string filename_;
   GridConf gridconf_;
   SubDomainConf subdomainconf_;
-  std::optional<FieldProp> globalFieldProp_;
-  std::optional<FieldProp> domainFieldProp_;
-  std::optional<FieldProp> patchFieldProp_;
+  std::optional<FieldDesc> globalFieldProp_;
+  std::optional<FieldDesc> domainFieldProp_;
+  std::optional<FieldDesc> patchFieldProp_;
 
   field3d *fglob_ = nullptr;
   field3d *fsubd_ = nullptr;
@@ -219,8 +219,8 @@ public:
 
   int getMpiRank() const { return mpirank_; }
   int getMpiSize() const { return mpisize_; }
-  FieldProp getGlobalFieldProp() const { return globalFieldProp_.value(); }
-  FieldProp getDomainFieldProp() const { return domainFieldProp_.value(); }
+  FieldDesc getGlobalFieldProp() const { return globalFieldProp_.value(); }
+  FieldDesc getDomainFieldProp() const { return domainFieldProp_.value(); }
   const SubDomainConf &getSubdomainconf() const { return subdomainconf_; }
   const GridConf &getGridconf() const { return gridconf_; }
 

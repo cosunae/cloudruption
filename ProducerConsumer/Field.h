@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
-struct FieldProp {
-  FieldProp(const std::vector<size_t> &strides,
+struct FieldDesc {
+  FieldDesc(const std::vector<size_t> &strides,
             const std::vector<size_t> &sizes)
       : strides_(strides), sizes_(sizes),
         totalsize_(
@@ -22,14 +22,14 @@ struct FieldProp {
   const std::vector<size_t> &getSizes() { return sizes_; }
 };
 
-struct Field {
-  Field(std::string variableName, FieldProp fieldProp)
+struct FieldProp {
+  FieldProp(std::string variableName, FieldDesc fieldProp)
       : variableName_(variableName), fieldProp_(fieldProp) {}
   std::string variableName_;
-  FieldProp fieldProp_;
+  FieldDesc fieldProp_;
 };
 
-FieldProp makeGlobalFieldProp(GridConf const &gridconf);
-FieldProp makeDomainFieldProp(DomainConf const &domain);
-FieldProp makePatchFieldProp(GridConf const &gridconf);
-Field makeDomainField(std::string variableName, DomainConf const &domain);
+FieldDesc makeGlobalFieldProp(GridConf const &gridconf);
+FieldDesc makeDomainFieldProp(DomainConf const &domain);
+FieldDesc makePatchFieldProp(GridConf const &gridconf);
+FieldProp makeDomainField(std::string variableName, DomainConf const &domain);
