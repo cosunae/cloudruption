@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-#include "Field.h"
+#include "FieldProp.h"
 #include "Grid.h"
 
 #if SIZE_MAX == UCHAR_MAX

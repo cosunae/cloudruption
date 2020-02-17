@@ -3,6 +3,7 @@ from enum import IntEnum
 
 import eccodes as ecc
 import fieldop
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import parseGrib as pgrib
@@ -10,7 +11,6 @@ from confluent_kafka import Consumer, KafkaError
 from dataclasses import dataclass
 from netCDF4 import Dataset
 from values import undef
-import matplotlib
 
 
 class ActionType(IntEnum):
@@ -146,6 +146,7 @@ class DataRegistry:
         if topic not in self.dataRequests_.keys():
             self.dataRequests_[topic] = DataRequest(topic)
 
+
 def get_key(msg):
     c1 = struct.unpack('i8c2i8Q4f', msg)
     stringlist = ''.join([x.decode('utf-8') for x in c1[1:9]])
@@ -206,6 +207,7 @@ class DataRegistryStreaming(DataRegistry):
             self.dataRequests_[field].insert(
                 fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen, msKey.level,
                                     np.reshape(al, (msKey.lonlen, msKey.latlen), order='F')), msKey)
+
 
 class OutputDataRegistry:
     pass
@@ -350,16 +352,13 @@ class DataRegistryFile(DataRegistry):
                 msg = ecc.GribMessage(grib)
 
                 #                print(msg.keys())
+
                 fieldname = self.getGribFieldname(msg)
                 if not fieldname:
                     print('WARNING: found a grib field with no match in table : ', msg['cfVarName'],
                           msg['table2Version'], msg['indicatorOfParameter'], msg['indicatorOfTypeOfLevel'])
                     continue
                 if fieldname in topics or 'all' in topics:
-                    # Hack I dont know why t has 60 levels (in layer) plus [0,0]
-                    #                    if msg["bottomLevel"] == 0 and msg["topLevel"] == 0:
-                    #                        continue
-
                     if fieldname not in nlevels.keys():
                         nlevels[fieldname] = 0
 
@@ -368,45 +367,21 @@ class DataRegistryFile(DataRegistry):
                     if 'all' in topics:
                         self.appendTopic(fieldname)
 
-                    #                    print(msg["gridDefinition"], msg["gridType"], msg["gridDefinitionTemplateNumber"],
-                    #                          msg["gridDefinitionDescription"], msg["latitudeOfFirstGridPoint"], msg["cfVarName"],
-                    #                          msg["latitudeOfLastGridPoint"], msg["Ni"], msg["Nj"], msg["GRIBEditionNumber"],
-                    #                          msg['paramId'], msg['bottomLevel'], msg['topLevel'], msg['table2Version'],
-                    #                          msg['indicatorOfParameter'], msg['indicatorOfTypeOfLevel'])
-
                     ni = msg['Ni']
                     nj = msg['Nj']
 
-                    arr2 = np.reshape(ecc.codes_get_values(msg.gid), (nj, ni)).astype(np.float32)
+                    lord = 'F'
+                    if not msg['jPointsAreConsecutive'] == 0:
+                        lord = 'C'
 
-                    # TODO super hack. Need to understand the layouts, or pass strides to SinglePatch
-                    var = np.empty([ni, nj]).astype(np.float32)
-                    var[:, :] = np.transpose(arr2[:, :], (1, 0))
-
+                    arr = np.reshape(ecc.codes_get_values(msg.gid), (ni, nj), order='F').astype(np.float32)
                     lev = msg["bottomLevel"]
-
-                    #                    iwidth = int(var.shape[0] / self.npart_[0])
-                    #                    jwidth = int(var.shape[1] / self.npart_[1])
-                    #                    for nbi in range(0, self.npart_[0]):
-                    #                       for nbj in range(0, self.npart_[1]):
-                    #                           istart = nbi * iwidth
-                    #                           jstart = nbj * jwidth
-                    #                           iend = min((nbi + 1) * iwidth-1, nj)
-                    #                           jend = min((nbj + 1) * jwidth-1, ni)
-                    #                           subpatch = var[istart:iend, jstart:jend]
-
-                    #                            print("III", istart, jstart, iend, jend, iwidth, jwidth)
-                    #                            msgkey = MsgKey(1, fieldname, self.npart_[0] * self.npart_[1], 0, istart, jstart, lev, 0,
-                    #                                                0, iwidth, jwidth, 60, ni,nj)
-                    #                            self.dataRequests_[fieldname].insert(
-                    #                                    fieldop.SinglePatch(istart, jstart, iend - istart, jend - jstart, lev, subpatch),
-                    #                                    msgkey)
 
                     msgkey = MsgKey(1, fieldname, 1, 0, 0, 0, lev, ni,
                                     ni, 60, ni, nj, msg["longitudeOfFirstGridPoint"], msg["longitudeOfLastGridPoint"],
                                     msg["latitudeOfFirstGridPoint"], msg["latitudeOfLastGridPoint"])
                     self.dataRequests_[fieldname].insert(
-                        fieldop.SinglePatch(0, 0, ni, nj, lev, var), msgkey)
+                        fieldop.SinglePatch(0, 0, ni, nj, lev, arr), msgkey)
 
             # This is the equivalent to sending the header
             for field in nlevels:

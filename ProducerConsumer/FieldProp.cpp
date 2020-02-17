@@ -1,4 +1,4 @@
-#include "Field.h"
+#include "FieldProp.h"
 #include "Grid.h"
 
 FieldDesc makeGlobalFieldProp(GridConf const &gridconf) {

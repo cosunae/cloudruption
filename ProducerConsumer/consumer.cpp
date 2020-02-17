@@ -1,6 +1,6 @@
 #include "Config.h"
 #include "DistributedField.h"
-#include "Field.h"
+#include "FieldProp.h"
 #include "KeyMessage.h"
 #include "nctools.h"
 #include <cstring>

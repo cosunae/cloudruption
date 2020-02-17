@@ -39,8 +39,10 @@ set(COMMONSRC
     KeyMessage.h 
     nctools.cpp 
     nctools.h 
-    Field.cpp 
-    Field.h 
+    field.cpp
+    field.h
+    FieldProp.cpp 
+    FieldProp.h 
     Grid.cpp 
     Grid.h 
     Config.h
@@ -66,7 +68,7 @@ target_link_libraries(consumer PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(consumer PRIVATE ${RDKAFKA_LIBRARIES})
 target_link_libraries(consumer PRIVATE "stdc++fs")
 
-pybind11_add_module(fieldop fieldop.cpp DistributedField.cpp)
+pybind11_add_module(fieldop fieldop.cpp DistributedField.cpp field.cpp)
 pybind11_add_module(testfieldop testfieldop.cpp)
 
 
