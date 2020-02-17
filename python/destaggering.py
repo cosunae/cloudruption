@@ -20,16 +20,12 @@ def stencily(a):
     return np.float32(0.5) * (a[0,-1,0] + a[0, 1,0 ])
 
 def destagger(field, stagx, stagy):
-    print(field)
     garray = np.array(field, copy=False)
 
     if stagx:
-        print("INE")
-        garray2 = stencilx(garray)
-        return garray2
+        return stencilx(garray)
     if stagy:
-        garray2 = stencily(garray)
-        return garray2
+        return stencily(garray)
 
     return garray
 

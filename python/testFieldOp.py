@@ -1,5 +1,6 @@
 import unittest
 import fieldop
+#import testfieldop
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -50,6 +51,13 @@ class TestFieldOp(unittest.TestCase):
         self.assertAlmostEqual(backarr[1][0][1], 10.12, 5)
         self.assertAlmostEqual(backarr[2][0][0], 20.11, 5)
         self.assertAlmostEqual(backarr[2][0][1], 20.12, 5)
+
+#    def test_field3d_cppcomp(self):
+#        arr = np.zeros((2,3,4), dtype=np.float32)
+#        field = fieldop.field3d(arr)
+#        tf = testfieldop.TestFieldOp(field)
+#        tf.compute()
+
 
 
     def test_singlepatch(self):
