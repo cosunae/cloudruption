@@ -15,6 +15,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='consumer')
     parser.add_argument('--file', help='grib/netcdf filename')
     parser.add_argument('--format', help='grib or nc')
+    parser.add_argument('--topics', help='comma separated list of topics to subscribe')
 
     args = parser.parse_args()
     format = args.format
@@ -25,12 +26,16 @@ if __name__ == '__main__':
         print("invalid file format")
         sys.exit(1)
 
+    topics=['all']
+    if args.topics:
+        topics=args.topics.split(',')
+
     if args.file:
         reg = dreg.DataRegistryFile(format, args.file)
     else:
         reg = dreg.DataRegistryStreaming()
 
-    reg.subscribe(["U", "V"])
+    reg.subscribe(topics)
 
     tmpDatapool = {}
     while True:
