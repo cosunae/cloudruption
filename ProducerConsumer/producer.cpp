@@ -412,13 +412,15 @@ public:
                    subdomainconf.istart,
                    subdomainconf.jstart,
                    lev,
-                   0,
-                   0,
                    domainFieldProp.sizes_[0],
                    domainFieldProp.sizes_[1],
                    domainFieldProp.sizes_[2],
                    gridconf.lonlen,
-                   gridconf.latlen};
+                   gridconf.latlen,
+                   0,
+                   0,
+                   0,
+                   0};
     strcpy(key.key, fieldname.substr(0, 8).c_str());
     return key;
   }

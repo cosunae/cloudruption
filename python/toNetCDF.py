@@ -30,7 +30,7 @@ if __name__ == '__main__':
     else:
         reg = dreg.DataRegistryStreaming()
 
-    reg.subscribe(["all"])
+    reg.subscribe(["U", "V"])
 
     tmpDatapool = {}
     while True:

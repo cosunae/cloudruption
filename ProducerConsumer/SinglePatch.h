@@ -31,11 +31,9 @@ public:
                 (bbox.limits_[2][1] - bbox.limits_[2][0] + 1)) {}
 
   field3d(size_t i, size_t j, size_t k)
-      : m_i(i), m_j(j), m_k(k), m_strides({i * j * k, k, k * j}) {
+      : m_i(i), m_j(j), m_k(k), m_strides({j * k, k, 1}) {
     data_ = static_cast<float *>(malloc(i * j * k * sizeof(float)));
   }
-  field3d(size_t i, size_t j, size_t k, float *data)
-      : m_i(i), m_j(j), m_k(k), m_strides({i * j * k, k, k * j}), data_(data) {}
 
   field3d(size_t i, size_t j, size_t k, std::array<size_t, 3> strides,
           float *data)
@@ -47,6 +45,8 @@ public:
       std::cout << "RRRRRRERROR i:" << i << " j:" << j << " k: " << k
                 << "m_i:" << m_i << " m_j:" << m_j << " m_k: " << m_k
                 << std::endl;
+      std::cout << "strides " << m_strides[0] << "," << m_strides[1] << ","
+                << m_strides[2] << std::endl;
     }
     return data_[i * m_strides[0] + j * m_strides[1] + k * m_strides[2]];
   }
@@ -65,18 +65,30 @@ class field2d {
   float *m_data;
 
 public:
-  field2d(size_t i, size_t j) : m_i(i), m_j(j), m_strides({i * j, j}) {
+  field2d(size_t i, size_t j) : m_i(i), m_j(j), m_strides({j, 1}) {
     m_data = static_cast<float *>(malloc(i * j * sizeof(float)));
   }
-  field2d(size_t i, size_t j, float *data)
-      : m_i(i), m_j(j), m_strides({i * j, j}), m_data(data) {}
+  field2d(size_t i, size_t j, std::array<size_t, 2> strides, float *data)
+      : m_i(i), m_j(j), m_strides(strides), m_data(data) {}
   field2d(size_t i, size_t j, std::array<size_t, 2> strides)
       : m_i(i), m_j(j), m_strides(strides) {
     m_data = static_cast<float *>(malloc(i * j * sizeof(float)));
   }
 
-  float &operator()(int i, int j) { return m_data[j + i * m_strides[1]]; }
-  float operator()(int i, int j) const { return m_data[j + i * m_strides[1]]; }
+  float &operator()(int i, int j) {
+    if (i * m_strides[0] + j * m_strides[1] >= m_i * m_j)
+      std::cout << "RRRRRRERROR i:" << i << " j:" << j << "m_i:" << m_i
+                << " m_j:" << m_j << std::endl;
+
+    return m_data[i * m_strides[0] + j * m_strides[1]];
+  }
+  float operator()(int i, int j) const {
+    if (i * m_strides[0] + j * m_strides[1] >= m_i * m_j)
+      std::cout << "RRRRRRERROR i:" << i << " j:" << j << "m_i:" << m_i
+                << " m_j:" << m_j << std::endl;
+
+    return m_data[i * m_strides[0] + j * m_strides[1]];
+  }
   float *data() const { return m_data; }
   size_t isize() const { return m_i; }
   size_t jsize() const { return m_j; }

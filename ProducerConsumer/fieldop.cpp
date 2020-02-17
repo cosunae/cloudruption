@@ -34,7 +34,10 @@ PYBIND11_MODULE(fieldop, m) {
             info.ndim != 2)
           throw std::runtime_error("Incompatible buffer format!");
 
-        return field2d(info.shape[0], info.shape[1], (float *)info.ptr);
+        return field2d(info.shape[0], info.shape[1],
+                       std::array<size_t, 2>{info.strides[0] / sizeof(float),
+                                             info.strides[1] / sizeof(float)},
+                       (float *)info.ptr);
       }))
       .def("__getitem__",
            [](const field2d &m, std::pair<ssize_t, ssize_t> i) {

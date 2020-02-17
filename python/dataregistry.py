@@ -10,6 +10,7 @@ from confluent_kafka import Consumer, KafkaError
 from dataclasses import dataclass
 from netCDF4 import Dataset
 from values import undef
+import matplotlib
 
 
 class ActionType(IntEnum):
@@ -96,7 +97,7 @@ class DataRequest:
             self.domain_.levels = nlevels
 
     def complete(self) -> bool:
-        print("TEST ", self.fieldname_, len(self.patches_), self.msgKey_.npatches)
+        print("TEST ", self.fieldname_, len(self.patches_))
         # Not a single patch was inserted
         if not self.msgKey_ or not self.nlevels_:
             return False
@@ -125,6 +126,7 @@ class DataRegistry:
             df = fieldop.DistributedField(field, dataReq.domain_, dataReq.msgKey_.npatches)
 
             for patch in dataReq.patches_:
+#                plot2d(np.array(patch, copy=False))
                 df.insertPatch(patch)
 
             bbox = df.bboxPatches()
@@ -145,9 +147,8 @@ class DataRegistry:
         if topic not in self.dataRequests_.keys():
             self.dataRequests_[topic] = DataRequest(topic)
 
-
 def get_key(msg):
-    c1 = struct.unpack('i8c2i3Q2f5Q4f', msg)
+    c1 = struct.unpack('i8c2i8Q4f', msg)
     stringlist = ''.join([x.decode('utf-8') for x in c1[1:9]])
     allargs = list(c1[0:1]) + [stringlist] + list(c1[9:])
     key = MsgKey(*allargs)
@@ -203,6 +204,7 @@ class DataRegistryStreaming(DataRegistry):
             if msKey.action_type != int(ActionType.Data):
                 return
 
+            plot2d(np.reshape(al, (msKey.lonlen, msKey.latlen), order='F'))
             self.dataRequests_[field].insert(
                 fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen, msKey.level,
                                     np.reshape(al, (msKey.lonlen, msKey.latlen))), msKey)
