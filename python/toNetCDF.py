@@ -10,6 +10,7 @@ from numba import jit
 from typing import List
 import math
 import fieldop
+import data
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='consumer')
@@ -26,24 +27,26 @@ if __name__ == '__main__':
         print("invalid file format")
         sys.exit(1)
 
-    topics=['all']
-    if args.topics:
-        topics=args.topics.split(',')
-
     if args.file:
         reg = dreg.DataRegistryFile(format, args.file)
     else:
         reg = dreg.DataRegistryStreaming()
 
-    reg.subscribe(topics)
+    if args.topics:
+        reg.subscribe(args.topics.split(','))
+    else:
+        reg.subscribe(['^.*'])
+#        reg.registerAll()
 
-    tmpDatapool = {}
+    tmpDatapool = data.DataPool()
+
+    outreg = dreg.OutputDataRegistryFile("ou_ncfile", tmpDatapool)
+
     while True:
         reg.poll(1.0)
-        if reg.complete():
-            reg.gatherField(tmpDatapool)
-            break
+        timestamp = reg.complete()
+        if timestamp:
+            reg.gatherField(timestamp, tmpDatapool)
+            outreg.sendData()
 
-    reg = dreg.OutputDataRegistryFile("ou_ncfile.nc", tmpDatapool)
-    reg.sendData()
 

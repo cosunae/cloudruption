@@ -10,6 +10,7 @@ from numba import jit, stencil
 from typing import List
 import math
 import fieldop
+import data
 
 @stencil
 def stencilx(a):
@@ -33,11 +34,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='consumer')
     parser.add_argument('--file', help='grib/netcdf filename')
     parser.add_argument('--format', help='grib or nc')
+    parser.add_argument('--topics', help='comma separated list of topics to subscribe')
 
     args = parser.parse_args()
     format = args.format
     if not format:
         format="grib"
+
+    topics = ['all']
+    if args.topics:
+        topics = args.topics.split(',')
 
     if format not in ("grib", "nc"):
         print("invalid file format")
@@ -48,40 +54,52 @@ if __name__ == '__main__':
     else:
         reghs = dreg.DataRegistryStreaming()
 
-    tmpDatapool = {}
+    tmpDatapool = data.DataPool()
 
-    reghs.subscribe(["HSURF"])
-    reghs.wait()
-    reghs.gatherField(tmpDatapool)
+    reghs.subscribe(["T"])
+    timestamp = reghs.wait()
+    reghs.gatherField(timestamp, tmpDatapool)
 
-    hsurfkey = reghs.dataRequests_["HSURF"].msgKey_
+    hsurfkey = tmpDatapool[timestamp]["T"].metadata_
 
     dx = (hsurfkey.longitudeOfLastGridPoint - hsurfkey.longitudeOfFirstGridPoint)/float(hsurfkey.totlonlen-1)
     dy = (hsurfkey.latitudeOfLastGridPoint - hsurfkey.latitudeOfFirstGridPoint)/float(hsurfkey.totlatlen-1)
 
+    del reghs
+
     if args.file:
         reg = dreg.DataRegistryFile(format, args.file)
     else:
-        reg = dreg.DataRegistryStreaming()
+        # Since we use only 1 partition, we can not use two consumers with the same group
+        reg = dreg.DataRegistryStreaming("group2")
 
-    reg.subscribe(["all"])
+    reg.subscribe(topics)
 
-    modNpField = {}
+    outDataPool = data.DataPool()
+
+    outreg = dreg.OutputDataRegistryFile("ou_ncfile", outDataPool)
     while True:
         reg.poll(1.0)
-        if reg.complete():
-
-            reg.gatherField(tmpDatapool)
-            for field in tmpDatapool:
-
-                key = reg.dataRequests_[field].msgKey_
+        timestamp = reg.complete()
+        if timestamp:
+            reg.gatherField(timestamp, tmpDatapool)
+            for fieldname in tmpDatapool[timestamp]:
+                key = tmpDatapool[timestamp][fieldname].metadata_
+                field = tmpDatapool[timestamp][fieldname].data_
                 dx_stag = (key.longitudeOfLastGridPoint - hsurfkey.longitudeOfLastGridPoint) / dx
                 dy_stag = (key.latitudeOfLastGridPoint - hsurfkey.latitudeOfLastGridPoint) / dy
-                if math.isclose(dx_stag, 0.5, rel_tol=1e-5) or math.isclose(dy_stag, 0.5, rel_tol=1e-5):
-                    modNpField[field] = destagger(tmpDatapool[field], math.isclose(dx_stag, 0.5, rel_tol=1e-5), math.isclose(dy_stag, 0.5, rel_tol=1e-5))
-            break
+                xstag =math.isclose(dx_stag, 0.5, rel_tol=1e-5)
+                ystag = math.isclose(dy_stag, 0.5, rel_tol=1e-5)
+                if  xstag or ystag:
+                    print("Field :",fieldname, " is staggered in (x,y):", xstag,",",ystag )
+                    staggeredField = destagger(field, math.isclose(dx_stag, 0.5, rel_tol=1e-5), math.isclose(dy_stag, 0.5, rel_tol=1e-5))
+                    outDataPool.insert(timestamp, fieldname, fieldop.field3d(staggeredField), key)
+                else:
+                    outDataPool.insert(timestamp, fieldname, field, key)
 
-    for afield in modNpField:
-        tmpDatapool[afield] = fieldop.field3d(modNpField[afield])
-    reg = dreg.OutputDataRegistryFile("ou_ncfile.nc", tmpDatapool)
-    reg.sendData()
+            print("outData", len(outDataPool.data_))
+            tmpDatapool.delete(timestamp)
+            print("Seind ")
+            print("outData", len(outDataPool.data_))
+
+            outreg.sendData()

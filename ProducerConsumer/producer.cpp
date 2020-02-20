@@ -3,6 +3,7 @@
 #include "SinglePatch.h"
 #include <assert.h>
 #include <bits/stdc++.h>
+#include <chrono>
 #include <iostream>
 #include <limits.h>
 #include <math.h>
@@ -405,34 +406,32 @@ public:
     std::cout << "% Created producer " << producer_->name() << std::endl;
   }
 
-  KeyMessage getMsgKey(ActionType actionType, std::string fieldname,
-                       const size_t lev) const {
+  KeyMessage getMsgKey(ActionType actionType, size_t timestamp,
+                       std::string fieldname, const size_t lev) const {
     const auto &subdomainconf = fHandler_.getSubdomainconf();
     auto domainFieldProp = fHandler_.getDomainFieldProp();
     const auto &gridconf = fHandler_.getGridconf();
-    KeyMessage key{actionType,
-                   "",
-                   fHandler_.getMpiSize(),
-                   fHandler_.getMpiRank(),
-                   subdomainconf.istart,
-                   subdomainconf.jstart,
-                   lev,
-                   domainFieldProp.sizes_[0],
-                   domainFieldProp.sizes_[1],
-                   domainFieldProp.sizes_[2],
-                   gridconf.lonlen,
-                   gridconf.latlen,
-                   0,
-                   0,
-                   0,
-                   0};
+
+    const float dx = 60;
+
+    KeyMessage key{
+        actionType, "", fHandler_.getMpiSize(), fHandler_.getMpiRank(),
+        timestamp, subdomainconf.istart, subdomainconf.jstart, lev,
+        domainFieldProp.sizes_[0], domainFieldProp.sizes_[1],
+        domainFieldProp.sizes_[2], gridconf.lonlen, gridconf.latlen,
+        // emulating staggering
+        (fieldname == "U" ? dx / 2 : 0),
+        dx * (domainFieldProp.sizes_[0] - 1) + (fieldname == "U" ? dx / 2 : 0),
+        (fieldname == "V" ? dx / 2 : 0),
+        dx * (domainFieldProp.sizes_[1] - 1) + (fieldname == "V" ? dx / 2 : 0)};
     strcpy(key.key, fieldname.substr(0, 8).c_str());
     return key;
   }
 
-  void sendHeader(std::string filename, std::string fieldname) {
+  void sendHeader(std::string filename, size_t timestamp,
+                  std::string fieldname) {
     std::cout << "Sending header for topic: " << fieldname << std::endl;
-    auto key = getMsgKey(ActionType::HeaderData, fieldname, -1);
+    auto key = getMsgKey(ActionType::HeaderData, timestamp, fieldname, -1);
 
     TopicHeader headerData;
     strcpy(
@@ -457,9 +456,10 @@ public:
     }
   }
 
-  void sendClose(std::string filename, std::string fieldname) {
+  void sendClose(std::string filename, size_t timestamp,
+                 std::string fieldname) {
     std::cout << "Sending close for topic: " << fieldname << std::endl;
-    auto key = getMsgKey(ActionType::EndData, fieldname, -2);
+    auto key = getMsgKey(ActionType::EndData, timestamp, fieldname, -2);
 
     TopicHeader headerData;
     strcpy(
@@ -484,8 +484,8 @@ public:
     }
   }
 
-  void produce(std::string fieldname, size_t lev) {
-    auto key = getMsgKey(ActionType::Data, fieldname, lev);
+  void produce(size_t timestamp, std::string fieldname, size_t lev) {
+    auto key = getMsgKey(ActionType::Data, timestamp, fieldname, lev);
 
     for (int i = 0; i < fHandler_.getMpiSize(); ++i) {
       if (i == fHandler_.getMpiRank()) {
@@ -545,22 +545,26 @@ int main(int argc, char **argv) {
 
     KafkaProducer producer(fieldHandler, config.getKafkaBroker());
 
+    std::chrono::system_clock::time_point p = std::chrono::system_clock::now();
+    std::time_t tt = std::chrono::system_clock::to_time_t(p);
+    size_t t = static_cast<size_t>(tt);
+
     for (auto fieldname : topics) {
       if (fieldHandler.setupGridConf(fieldname))
         throw std::runtime_error("Error setting up grid");
 
-      producer.sendHeader(file, fieldname);
+      producer.sendHeader(file, t, fieldname);
       fieldHandler.loadField(fieldname);
 
       for (size_t k = 0; k < fieldHandler.getGridconf().levlen; ++k) {
-        producer.produce(fieldname, k);
+        producer.produce(t, fieldname, k);
       }
 
       // right now a single close signal from one mpi rank will close the file
       // of the topic. therefore we need to synchronize all mpi ranks to make
       // sure that
       MPI_Barrier(MPI_COMM_WORLD);
-      producer.sendClose(file, fieldname);
+      producer.sendClose(file, t, fieldname);
     }
   }
 
