@@ -41,7 +41,7 @@ if __name__ == '__main__':
     if not format:
         format="grib"
 
-    topics = ['all']
+    topics = ['^.*']
     if args.topics:
         topics = args.topics.split(',')
 
@@ -57,10 +57,15 @@ if __name__ == '__main__':
     tmpDatapool = data.DataPool()
 
     reghs.subscribe(["T"])
-    timestamp = reghs.wait()
-    reghs.gatherField(timestamp, tmpDatapool)
 
-    hsurfkey = tmpDatapool[timestamp]["T"].metadata_
+    hsurfkey = None
+    while True:
+        reghs.poll(1.0)
+        reqHandle = reghs.complete()
+        if reqHandle:
+            reghs.gatherField(reqHandle, tmpDatapool)
+            hsurfkey = tmpDatapool[reqHandle.timestamp_]["T"].metadata_
+            break
 
     dx = (hsurfkey.longitudeOfLastGridPoint - hsurfkey.longitudeOfFirstGridPoint)/float(hsurfkey.totlonlen-1)
     dy = (hsurfkey.latitudeOfLastGridPoint - hsurfkey.latitudeOfFirstGridPoint)/float(hsurfkey.totlatlen-1)
@@ -74,32 +79,28 @@ if __name__ == '__main__':
         reg = dreg.DataRegistryStreaming("group2")
 
     reg.subscribe(topics)
-
     outDataPool = data.DataPool()
-
     outreg = dreg.OutputDataRegistryFile("ou_ncfile", outDataPool)
     while True:
         reg.poll(1.0)
-        timestamp = reg.complete()
-        if timestamp:
-            reg.gatherField(timestamp, tmpDatapool)
-            for fieldname in tmpDatapool[timestamp]:
-                key = tmpDatapool[timestamp][fieldname].metadata_
-                field = tmpDatapool[timestamp][fieldname].data_
-                dx_stag = (key.longitudeOfLastGridPoint - hsurfkey.longitudeOfLastGridPoint) / dx
-                dy_stag = (key.latitudeOfLastGridPoint - hsurfkey.latitudeOfLastGridPoint) / dy
-                xstag =math.isclose(dx_stag, 0.5, rel_tol=1e-5)
-                ystag = math.isclose(dy_stag, 0.5, rel_tol=1e-5)
-                if  xstag or ystag:
-                    print("Field :",fieldname, " is staggered in (x,y):", xstag,",",ystag )
-                    staggeredField = destagger(field, math.isclose(dx_stag, 0.5, rel_tol=1e-5), math.isclose(dy_stag, 0.5, rel_tol=1e-5))
-                    outDataPool.insert(timestamp, fieldname, fieldop.field3d(staggeredField), key)
-                else:
-                    outDataPool.insert(timestamp, fieldname, field, key)
+        reqHandle = reg.complete()
+        if reqHandle:
+            reg.gatherField(reqHandle, tmpDatapool)
+            for timestamp in tmpDatapool.data_:
+                for fieldname in tmpDatapool[timestamp]:
+                    key = tmpDatapool[timestamp][fieldname].metadata_
+                    field = tmpDatapool[timestamp][fieldname].data_
+                    dx_stag = (key.longitudeOfLastGridPoint - hsurfkey.longitudeOfLastGridPoint) / dx
+                    dy_stag = (key.latitudeOfLastGridPoint - hsurfkey.latitudeOfLastGridPoint) / dy
+                    xstag =math.isclose(dx_stag, 0.5, rel_tol=1e-5)
+                    ystag = math.isclose(dy_stag, 0.5, rel_tol=1e-5)
+                    if  xstag or ystag:
+                        print("Field :",fieldname, " is staggered in (x,y):", xstag,",",ystag )
+                        staggeredField = destagger(field, math.isclose(dx_stag, 0.5, rel_tol=1e-5), math.isclose(dy_stag, 0.5, rel_tol=1e-5))
+                        outDataPool.insert(timestamp, fieldname, fieldop.field3d(staggeredField), key)
+                    else:
+                        outDataPool.insert(timestamp, fieldname, field, key)
 
-            print("outData", len(outDataPool.data_))
             tmpDatapool.delete(timestamp)
-            print("Seind ")
-            print("outData", len(outDataPool.data_))
 
             outreg.sendData()

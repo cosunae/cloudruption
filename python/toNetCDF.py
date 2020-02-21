@@ -36,7 +36,6 @@ if __name__ == '__main__':
         reg.subscribe(args.topics.split(','))
     else:
         reg.subscribe(['^.*'])
-#        reg.registerAll()
 
     tmpDatapool = data.DataPool()
 
@@ -44,9 +43,9 @@ if __name__ == '__main__':
 
     while True:
         reg.poll(1.0)
-        timestamp = reg.complete()
-        if timestamp:
-            reg.gatherField(timestamp, tmpDatapool)
+        reqHandle = reg.complete()
+        if reqHandle:
+            reg.gatherField(reqHandle, tmpDatapool)
             outreg.sendData()
 
 

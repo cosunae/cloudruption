@@ -56,12 +56,7 @@ class DataRequest:
 
     def complete(self) -> bool:
         # Not a single patch was inserted
-        #print("COMPLETE ", self.msgKey_, len(self.patches_), self.msgKey_.npatches, self.domain_.levels)
-        if not ((len(self.patches_) == self.msgKey_.npatches * self.domain_.levels) and len(self.patches_) != 0):
-            print("COMPLETE ", self.msgKey_, len(self.patches_), self.msgKey_.npatches, self.domain_.levels)
-            print("NOT COMPLETE")
         if not self.msgKey_:
-            print("Early ret")
             return False
         print("RET " , (len(self.patches_) == self.msgKey_.npatches * self.domain_.levels) and (len(self.patches_) != 0))
         return (len(self.patches_) == self.msgKey_.npatches * self.domain_.levels) and (len(self.patches_) != 0)

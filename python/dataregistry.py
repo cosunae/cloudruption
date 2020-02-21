@@ -82,7 +82,6 @@ class DataRegistry:
         return RequestHandle(groupId, timestamp)
 
     def completeg(self, groupId):
-        print("test ..... ")
         groupRequest = self.groupRequests_[groupId]
         for timestamp in groupRequest.timeDataRequests_:
             requestHandle = self.completegt(groupId, timestamp)
@@ -96,6 +95,11 @@ class DataRegistry:
             self.poll(1.0)
 
         return self.complete(groupId)
+
+    def gatherFields(self, datapool: data.DataPool):
+        for groupId, groupRequest in enumerate(self.groupRequests_):
+            while len(groupRequest.timeDataRequests_):
+                self.gatherField(RequestHandle(groupId, list(groupRequest.timeDataRequests_.keys())[0]), datapool)
 
     def gatherField(self, requestHandle: RequestHandle, datapool: data.DataPool):
         datareqs = self.groupRequests_[requestHandle.groupId_].timeDataRequests_[requestHandle.timestamp_]
