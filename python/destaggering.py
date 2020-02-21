@@ -11,6 +11,7 @@ from typing import List
 import math
 import fieldop
 import data
+import uuid
 
 @stencil
 def stencilx(a):
@@ -81,6 +82,8 @@ if __name__ == '__main__':
     reg.subscribe(topics)
     outDataPool = data.DataPool()
     outreg = dreg.OutputDataRegistryFile("ou_ncfile", outDataPool)
+
+    gbc = {}
     while True:
         reg.poll(1.0)
         reqHandle = reg.complete()
@@ -97,10 +100,10 @@ if __name__ == '__main__':
                     if  xstag or ystag:
                         print("Field :",fieldname, " is staggered in (x,y):", xstag,",",ystag )
                         staggeredField = destagger(field, math.isclose(dx_stag, 0.5, rel_tol=1e-5), math.isclose(dy_stag, 0.5, rel_tol=1e-5))
+                        ## Avoid garbage collector
+                        gbc[uuid.uuid1()] = staggeredField
                         outDataPool.insert(timestamp, fieldname, fieldop.field3d(staggeredField), key)
                     else:
                         outDataPool.insert(timestamp, fieldname, field, key)
-
             tmpDatapool.delete(timestamp)
-
             outreg.sendData()
