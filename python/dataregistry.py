@@ -250,8 +250,7 @@ class OutputDataRegistryFile(OutputDataRegistry):
 
 
 class DataRegistryFile(DataRegistry):
-    def __init__(self, format, filename):
-        self.format_ = format
+    def __init__(self, filename):
         self.filename_ = filename
         self.npart_ = [2, 3]
         DataRegistry.__init__(self)

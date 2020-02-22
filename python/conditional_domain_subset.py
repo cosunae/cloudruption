@@ -11,6 +11,8 @@ from typing import List
 from values import undef, pc_b1, pc_b2w, pc_b3, pc_b4w, pc_rdv, pc_g, pc_r_d, pc_o_rdv
 import math
 import fieldop
+import grid_operator as go
+import data
 
 #@jit(nopython=True, parallel=True)
 def f_pv_sw(t: np.ndarray):
@@ -42,62 +44,47 @@ def filter_t(t: np.ndarray, x: List[np.ndarray]):
                     if not (t[i,j,k] > 233.15 and t[i,j,k] < 273.15):
                         t[i,j,k] = undef
 
+
+class filter_operator:
+    def __call__(self, datapool: data.DataPool, timestamp, gbc ):
+        qv = np.array(datapool[timestamp]['QV'].data_, copy=False)
+        qc = np.array(datapool[timestamp]['QC'].data_, copy=False)
+        qi = np.array(datapool[timestamp]['QI'].data_, copy=False)
+        t = np.array(datapool[timestamp]['T'].data_, copy=False)
+
+        pp = np.array(datapool[timestamp]['PP'].data_, copy=False)
+
+        # DO NOT REPORT THIS... COMPILATION TIME IS INCLUDED IN THE EXECUTION TIME!
+        start = time.time()
+        filter_t(t, [qv, qc, qi])
+        #            relhum(qv, pp, t)
+        end = time.time()
+        print("Elapsed (with compilation) = %s" % (end - start))
+
+        # NOW THE FUNCTION IS COMPILED, RE-TIME IT EXECUTING FROM CACHE
+        start = time.time()
+        filter_t_nojit(t, [qv, qc, qi])
+            #            relh = relhum(qv, pp, t)
+            #            tmpDatapool["relhum"] = fieldop.field3d(relh)
+
+        end = time.time()
+        print("Elapsed (after compilation) = %s" % (end - start))
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='consumer')
     parser.add_argument('--file', required=True, help='grib/netcdf filename')
-    parser.add_argument('--format', help='grib or nc')
 
     args = parser.parse_args()
-    format = args.format
-    if not format:
-        format="grib"
-
-    if format not in ("grib", "nc"):
-        print("invalid file format")
-        sys.exit(1)
 
     if args.file:
-        reg = dreg.DataRegistryFile(format, args.file)
+        reg = dreg.DataRegistryFile(args.file)
     else:
         reg = dreg.DataRegistryStreaming()
 
     reg.subscribe(["QV","QC","QI", "PP", "T" ])
 
-    tmpDatapool = {}
-    while True:
-        reg.poll(1.0)
-        if reg.complete():
-            print("COMPLETE")
-            reg.gatherField(tmpDatapool)
+    tmpDatapool = data.DataPool()
+    outreg = dreg.OutputDataRegistryFile("ou_ncfile", tmpDatapool)
 
-            qv = np.array(tmpDatapool['QV'], copy=False)
-            qc = np.array(tmpDatapool['QC'], copy=False)
-            qi = np.array(tmpDatapool['QI'], copy=False)
-            t = np.array(tmpDatapool['T'], copy=False)
-
-            pp = np.array(tmpDatapool['PP'], copy=False)
-
-            # DO NOT REPORT THIS... COMPILATION TIME IS INCLUDED IN THE EXECUTION TIME!
-            start = time.time()
-            filter_t(t,[qv,qc, qi])
-#            relhum(qv, pp, t)
-            end = time.time()
-            print("Elapsed (with compilation) = %s" % (end - start))
-
-            # NOW THE FUNCTION IS COMPILED, RE-TIME IT EXECUTING FROM CACHE
-            start = time.time()
-            filter_t_nojit(t,[qv,qc, qi])
-#            relh = relhum(qv, pp, t)
-#            tmpDatapool["relhum"] = fieldop.field3d(relh)
-
-            end = time.time()
-            print("Elapsed (after compilation) = %s" % (end - start))
-
-            break
-
-    if args.file:
-        reg = dreg.OutputDataRegistryFile("ou_ncfile.nc", tmpDatapool)
-        reg.sendData()
-    else:
-        print("Data streaming not supported yet")
+    go.grid_operator()(filter_operator(), reg, tmpDatapool, outreg=outreg, service=True)
 
