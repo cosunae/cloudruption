@@ -27,7 +27,7 @@ if __name__ == '__main__':
     if args.topics:
         reg.subscribe(args.topics.split(','))
     else:
-        reg.subscribe(['^.*'])
+        reg.loadData(__file__.replace(".py", ".yaml"))
 
     tmpDatapool = data.DataPool()
 

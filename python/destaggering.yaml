@@ -1,0 +1,8 @@
+masspointref:
+  fields:
+    T:
+      desc: 3d
+default:
+  fields:
+    ^.*:
+      desc:

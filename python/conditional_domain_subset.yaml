@@ -1,0 +1,12 @@
+default:
+  fields:
+    QC:
+      desc: 3d
+    QV:
+      desc: 3d
+    QI:
+      desc: 3d
+    PP:
+      desc: 3d
+    T:
+      desc: 3d

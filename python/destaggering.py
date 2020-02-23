@@ -59,9 +59,6 @@ if __name__ == '__main__':
     parser.add_argument('--topics', help='comma separated list of topics to subscribe')
 
     args = parser.parse_args()
-    topics = ['^.*']
-    if args.topics:
-        topics = args.topics.split(',')
 
     if args.file:
         reghs = dreg.DataRegistryFile(args.file)
@@ -70,7 +67,7 @@ if __name__ == '__main__':
 
     tmpDatapool = data.DataPool()
 
-    reghs.subscribe(["T"])
+    reghs.loadData(__file__.replace(".py",".yaml"), tag="masspointref")
     go.grid_operator()(go.identity(), reghs, tmpDatapool)
     hsurfkey = None
     for timestamp in tmpDatapool.data_:
@@ -85,10 +82,13 @@ if __name__ == '__main__':
     if args.file:
         reg = dreg.DataRegistryFile(args.file)
     else:
-        # Since we use only 1 partition, we can not use two consumers with the same group
-        reg = dreg.DataRegistryStreaming("group2")
+        reg = dreg.DataRegistryStreaming()
 
-    reg.subscribe(topics)
+    if args.topics:
+        reg.subscribe(args.topics)
+    else:
+        reg.loadData(__file__.replace(".py",".yaml"), tag="default")
+
     outreg = dreg.OutputDataRegistryFile("ou_ncfile", tmpDatapool)
 
     go.grid_operator()(staggering_operator(dx, dy), reg, tmpDatapool, outreg=outreg, service=True)

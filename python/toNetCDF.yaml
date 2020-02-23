@@ -1,0 +1,4 @@
+default:
+  fields:
+    ^.*:
+      desc: misc

@@ -15,7 +15,7 @@ from confluent_kafka import Consumer, KafkaError
 from dataclasses import dataclass
 from netCDF4 import Dataset
 from values import undef
-
+import yaml
 
 class ActionType(IntEnum):
     HeaderData = 0
@@ -62,6 +62,13 @@ class RequestHandle:
 class DataRegistry:
     groupRequests_ = []
     registerAll_ = False
+
+
+    def loadData(self, config_filename, *, tag="default"):
+        f = open(config_filename, "r", encoding="utf-8")
+        datad = yaml.load(f, Loader=yaml.Loader)
+
+        self.subscribe(list(datad[tag]['fields'].keys()))
 
     def complete(self):
         for groupId, group in enumerate(self.groupRequests_):

@@ -81,7 +81,7 @@ if __name__ == '__main__':
     else:
         reg = dreg.DataRegistryStreaming()
 
-    reg.subscribe(["QV","QC","QI", "PP", "T" ])
+    reg.loadData(__file__.replace(".py",".yaml"))
 
     tmpDatapool = data.DataPool()
     outreg = dreg.OutputDataRegistryFile("ou_ncfile", tmpDatapool)
