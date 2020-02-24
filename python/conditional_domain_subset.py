@@ -71,7 +71,7 @@ class filter_operator:
         print("Elapsed (after compilation) = %s" % (end - start))
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(prog='consumer')
+    parser = argparse.ArgumentParser(prog='conditional_domain_subset')
     parser.add_argument('--file', required=True, help='grib/netcdf filename')
 
     args = parser.parse_args()

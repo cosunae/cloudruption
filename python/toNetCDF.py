@@ -14,7 +14,7 @@ import data
 import grid_operator as go
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(prog='consumer')
+    parser = argparse.ArgumentParser(prog='toNetCDF')
     parser.add_argument('--file', help='grib/netcdf filename')
     parser.add_argument('--topics', help='comma separated list of topics to subscribe')
 

@@ -54,7 +54,7 @@ class staggering_operator:
                 datapool.insert(timestamp, fieldname, fieldop.field3d(staggeredField), key)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(prog='consumer')
+    parser = argparse.ArgumentParser(prog='destaggering')
     parser.add_argument('--file', help='grib/netcdf filename')
     parser.add_argument('--topics', help='comma separated list of topics to subscribe')
 

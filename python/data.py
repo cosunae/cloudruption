@@ -22,11 +22,23 @@ class MsgKey:
     latitudeOfFirstGridPoint: float
     latitudeOfLastGridPoint: float
 
+@dataclass 
+class DataReqDesc:
+    longitudeOfFirstGridPoint: float
+    longitudeOfLastGridPoint: float
+    latitudeOfFirstGridPoint: float
+    latitudeOfLastGridPoint: float
+
+@dataclass
+class UserDataReq:
+    name: str
+    data_desc: DataReqDesc
+
 @dataclass
 class DataRequest:
 
-    def __init__(self, fieldname):
-        self.fieldname_ : str= fieldname
+    def __init__(self, user_data_req: UserDataReq):
+        self.user_data_req_ : UserDataReq = user_data_req
         self.patches_ = []
         self.domain_ = None
         self.msgKey_ = None
@@ -58,7 +70,7 @@ class DataRequest:
         # Not a single patch was inserted
         if not self.msgKey_:
             return False
-        print("RET " , (len(self.patches_) == self.msgKey_.npatches * self.domain_.levels) and (len(self.patches_) != 0))
+        print("RET " , len(self.patches_), self.msgKey_.npatches, self.domain_.levels, (len(self.patches_) == self.msgKey_.npatches * self.domain_.levels) and (len(self.patches_) != 0))
         return (len(self.patches_) == self.msgKey_.npatches * self.domain_.levels) and (len(self.patches_) != 0)
 
 

@@ -5,6 +5,7 @@ from enum import IntEnum
 from typing import List
 
 import data
+import sys
 import eccodes as ecc
 import fieldop
 import matplotlib
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from netCDF4 import Dataset
 from values import undef
 import yaml
+import os.path
 
 class ActionType(IntEnum):
     HeaderData = 0
@@ -42,15 +44,14 @@ def plot2d(arr):
 
 class NullRequest:
     def complete(self):
-        print("nullR")
         return False
 
 
-@dataclass
+#Warning, dataclass decorator here generates static members
 class GroupRequest:
-    timeDataRequests_ = {}
-    reqFields_ = {}
-
+    def __init__(self):
+        self.timeDataRequests_ = {}
+        self.reqFields_ = {}
 
 @dataclass
 class RequestHandle:
@@ -62,7 +63,6 @@ class RequestHandle:
 class DataRegistry:
     groupRequests_ = []
     registerAll_ = False
-
 
     def loadData(self, config_filename, *, tag="default"):
         f = open(config_filename, "r", encoding="utf-8")
@@ -81,15 +81,16 @@ class DataRegistry:
     def completegt(self, groupId, timestamp):
         groupRequest = self.groupRequests_[groupId]
 
-        dataRequest = groupRequest.timeDataRequests_[timestamp]
+        dataRequestDict = groupRequest.timeDataRequests_[timestamp]
 
-        for field in groupRequest.reqFields_:
-            if not dataRequest.get(field, NullRequest()).complete():
+        for field in [x.name for x in groupRequest.reqFields_]:
+            if not dataRequestDict.get(field, NullRequest()).complete():
                 return None
         return RequestHandle(groupId, timestamp)
 
     def completeg(self, groupId):
         groupRequest = self.groupRequests_[groupId]
+
         for timestamp in groupRequest.timeDataRequests_:
             requestHandle = self.completegt(groupId, timestamp)
             if requestHandle:
@@ -112,7 +113,7 @@ class DataRegistry:
         datareqs = self.groupRequests_[requestHandle.groupId_].timeDataRequests_[requestHandle.timestamp_]
 
         for field in datareqs:
-            print("GATHERING ", field)
+            print("GATHERING ", field, requestHandle.groupId_, requestHandle.timestamp_)
 
             dataReq = datareqs[field]
             df = fieldop.DistributedField(field, dataReq.domain_, dataReq.msgKey_.npatches)
@@ -130,10 +131,17 @@ class DataRegistry:
         return
 
     def cleanTimestamp(self, requestHandle):
+        print("Deleting timestamp ", requestHandle.groupId_, requestHandle.timestamp_)
         del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[requestHandle.timestamp_]
 
     def registerAll(self):
         self.registerAll_ = True
+
+    def subscribeIfNotExists(self, topic):
+        for groupId, gr in enumerate(self.groupRequests_):
+            if topic in [x.name for x in gr.reqFields_]:
+                return RequestHandle(groupId, None)
+        return DataRegistry.subscribe(self, [topic])
 
     def subscribe(self, topics):
         if topics == ['^.*']:
@@ -141,14 +149,14 @@ class DataRegistry:
             return RequestHandle(None, None)
 
         self.groupRequests_.append(GroupRequest())
-        self.groupRequests_[-1].reqFields_ = topics
+        self.groupRequests_[-1].reqFields_ = [data.UserDataReq(x, None) for x in topics]
         return RequestHandle(len(self.groupRequests_) - 1, None)
 
     def insertDataPatch(self, requestHandle: RequestHandle, fieldname, singlePatch, msgKey):
         groupRequest = self.groupRequests_[requestHandle.groupId_]
-
         dataReqs = groupRequest.timeDataRequests_.setdefault(requestHandle.timestamp_, {})
-        assert (fieldname in groupRequest.reqFields_)
+
+        assert (fieldname in [x.name for x in groupRequest.reqFields_])
         if not fieldname in dataReqs:
             dataReqs[fieldname] = data.DataRequest(fieldname)
         dataReqs[fieldname].insert(singlePatch, msgKey)
@@ -176,7 +184,6 @@ class DataRegistryStreaming(DataRegistry):
 
     def subscribe(self, topics):
         DataRegistry.subscribe(self, topics)
-        print("subscribing to ", topics)
         self.c_.subscribe(topics)
 
     def poll(self, seconds):
@@ -193,7 +200,7 @@ class DataRegistryStreaming(DataRegistry):
         dt = np.dtype('<f4')
         al = np.frombuffer(msg.value(), dtype=dt)
 
-        msKey: MsgKey = get_key(msg.key())
+        msKey: data.MsgKey = get_key(msg.key())
         if msKey.action_type != int(ActionType.Data):
             return
 
@@ -225,26 +232,27 @@ class OutputDataRegistryFile(OutputDataRegistry):
         dt = datetime.fromtimestamp(timestamp)
         filename = self.filename_ + str(dt.year) + str(dt.month).zfill(2) + str(dt.day).zfill(2) + str(dt.hour).zfill(
             2) + str(dt.minute).zfill(2) + str(dt.second).zfill(2) + ".nc"
-        out_nc = Dataset(filename, 'w', format='NETCDF4')
+        
+        openmode = 'a' if os.path.isfile(filename) else 'w'
 
-        londims = {}
-        latdims = {}
-        levdims = {}
+        out_nc = Dataset(filename, openmode, format='NETCDF4')
 
         for fieldname in datapool:
             field = datapool[fieldname].data_
-            if field.ksize() not in levdims.keys():
-                levdims[field.ksize()] = "lev" + str(len(levdims))
-                out_nc.createDimension(levdims[field.ksize()], field.ksize())
-            if field.isize() not in londims.keys():
-                londims[field.isize()] = "lon" + str(len(londims))
-                out_nc.createDimension(londims[field.isize()], field.isize())
-            if field.jsize() not in latdims.keys():
-                latdims[field.jsize()] = "lat" + str(len(latdims))
-                out_nc.createDimension(latdims[field.jsize()], field.jsize())
+            levdimname = "lev" + str(field.ksize())
+            if not levdimname in out_nc.dimensions:
+                out_nc.createDimension(levdimname, field.ksize())
+
+            londimname = "lon" + str(field.isize())
+            if not londimname in out_nc.dimensions:
+                out_nc.createDimension(londimname, field.isize())
+
+            latdimname = "lat" + str(field.jsize())
+            if not latdimname in out_nc.dimensions:
+                out_nc.createDimension(latdimname, field.jsize())
 
             fvar = out_nc.createVariable(fieldname, "f4",
-                                         (levdims[field.ksize()], latdims[field.jsize()], londims[field.isize()],),
+                                         (levdimname, latdimname, londimname),
                                          fill_value=-undef)
             fvar.missing_value = -undef
             garray = np.array(field, copy=False)
@@ -333,19 +341,23 @@ class DataRegistryFile(DataRegistry):
         ltopics = topics
         with ecc.GribFile(self.filename_) as grib:
             nlevels = {}
+            #Warning do not use/print/etc len(grib), for strange reasons it will always return the same msg
             for i in range(len(grib)):
                 msg = ecc.GribMessage(grib)
 
                 fieldname = self.getGribFieldname(msg)
+                # fieldname2 = self.getGribFieldname(msg)
+
                 if not fieldname:
                     print('WARNING: found a grib field with no match in table : ', msg['cfVarName'],
                           msg['table2Version'], msg['indicatorOfParameter'], msg['indicatorOfTypeOfLevel'])
                     continue
                 if self.registerAll_:
-                    ltopics = [fieldname]
-                    requestHandle = DataRegistry.subscribe(self, ltopics)
+                    #Only subscribe if the field was not registered yet
+                    requestHandle = DataRegistry.subscribeIfNotExists(self, fieldname)
+                    assert requestHandle
 
-                if fieldname in ltopics:
+                if fieldname in ltopics or self.registerAll_:
                     timestamp = self.getTimestamp(msg)
 
                     nlevels.setdefault(timestamp, {}).setdefault(fieldname, 0)
@@ -367,14 +379,13 @@ class DataRegistryFile(DataRegistry):
                                          ni, 60, ni, nj, msg["longitudeOfFirstGridPoint"],
                                          msg["longitudeOfLastGridPoint"],
                                          msg["latitudeOfFirstGridPoint"], msg["latitudeOfLastGridPoint"])
-
                     self.insertDataPatch(requestHandle, fieldname, fieldop.SinglePatch(0, 0, ni, nj, lev, arr), msgkey)
 
             # This is the equivalent to sending the header
             for timestamp in nlevels:
                 for field in nlevels[timestamp]:
                     for groupRequest in self.groupRequests_:
-                        if field in groupRequest.reqFields_:
+                        if field in [x.name for x in groupRequest.reqFields_]:
                             groupRequest.timeDataRequests_[timestamp][field].setNLevels(nlevels[timestamp][field])
 
     def poll(self, seconds):
