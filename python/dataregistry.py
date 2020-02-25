@@ -110,7 +110,8 @@ class DataRegistry:
             print("GATHERING ", field, requestHandle.groupId_, requestHandle.timestamp_)
 
             dataReq = datareqs[field]
-            df = fieldop.DistributedField(field, dataReq.domain_, dataReq.msgKey_.npatches)
+            domain = fieldop.DomainConf(dataReq.datadesc_.lonlen, dataReq.datadesc_.latlen, dataReq.datadesc_.levlen)
+            df = fieldop.DistributedField(field, domain, dataReq.npatches_)
 
             for patch in dataReq.patches_:
                 df.insertPatch(patch)
@@ -119,7 +120,7 @@ class DataRegistry:
             gfield = fieldop.field3d(bbox)
             df.gatherField(gfield)
 
-            datapool.insert(requestHandle.timestamp_, field, gfield, dataReq.msgKey_)
+            datapool.insert(requestHandle.timestamp_, field, gfield, dataReq.datadesc_)
 
         self.cleanTimestamp(requestHandle)
         return

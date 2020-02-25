@@ -30,6 +30,21 @@ class DataReqDesc:
     latitudeOfLastGridPoint: float
 
 @dataclass
+class DataDesc(DataReqDesc):
+    datetime: np.uint64
+    ilonstart: np.uint64
+    jlatstart: np.uint64
+    levelstart: np.uint64
+    lonlen: np.uint64
+    latlen: np.uint64
+    levlen: np.uint64
+
+class FieldObject:
+    def __init__(self, field: fieldop.field3d, datadesc: DataDesc):
+        self.data_: fieldop.field3d = field
+        self.datadesc_: DataDesc = datadesc
+
+@dataclass
 class UserDataReq:
     name: str
     data_desc: DataReqDesc
@@ -40,44 +55,49 @@ class DataRequest:
     def __init__(self, user_data_req: UserDataReq):
         self.user_data_req_ : UserDataReq = user_data_req
         self.patches_ = []
-        self.domain_ = None
-        self.msgKey_ = None
+        self.npatches_ = None
+        self.datadesc_ = None
 
     def insert(self, patch: fieldop.SinglePatch, msgKey: MsgKey):
         self.patches_.append(patch)
 
-        if not self.msgKey_:
-            self.msgKey_ = msgKey
-            if self.domain_:
-                #levels is not check since for the file grib send, the value is only sent at the end and not with every message
-                assert self.domain_.isize == msgKey.totlonlen
-                assert self.domain_.jsize == msgKey.totlatlen
-            else:
-                self.domain_ = fieldop.DomainConf(msgKey.totlonlen, msgKey.totlatlen, msgKey.levlen)
+        if not self.datadesc_:
+            self.datadesc_ = DataDesc(msgKey.longitudeOfFirstGridPoint, msgKey.longitudeOfLastGridPoint, msgKey.latitudeOfFirstGridPoint, 
+            msgKey.latitudeOfLastGridPoint, msgKey.datetime, msgKey.ilonstart, msgKey.jlatstart, 0, msgKey.totlonlen, msgKey.totlatlen, msgKey.levlen)
         else:
-            assert msgKey.npatches == self.msgKey_.npatches
+            assert self.datadesc_.longitudeOfFirstGridPoint == msgKey.longitudeOfFirstGridPoint
+            assert self.datadesc_.longitudeOfLastGridPoint == msgKey.longitudeOfLastGridPoint
+            assert self.datadesc_.latitudeOfFirstGridPoint == msgKey.latitudeOfFirstGridPoint
+            assert self.datadesc_.latitudeOfLastGridPoint == msgKey.latitudeOfLastGridPoint
+            assert self.datadesc_.datetime == msgKey.datetime
+            assert self.datadesc_.ilonstart == msgKey.ilonstart
+            assert self.datadesc_.jlatstart == msgKey.jlatstart
+            assert self.datadesc_.levelstart == 0
+            assert self.datadesc_.lonlen == msgKey.totlonlen
+            assert self.datadesc_.latlen == msgKey.totlatlen
+#            assert self.datadesc_.levlen == msgKey.levlen
+
+        if not self.npatches_:
+            self.npatches_ = msgKey.npatches
+        else:
+            assert self.npatches_ == msgKey.npatches
 
         # TODO check in the else the keymsg is compatible with others msgs
 
     # The NLevels can not come via the msgKey, but rather on a separate header msg
     def setNLevels(self, nlevels):
-        if not self.domain_:
-            self.domain_ = fieldop.DomainConf(0, 0, nlevels)
+        if not self.datadesc_:
+            assert False
+#            self.domain_ = fieldop.DomainConf(0, 0, nlevels)
         else:
-            self.domain_.levels = nlevels
+            self.datadesc_.levlen = nlevels
 
     def complete(self) -> bool:
         # Not a single patch was inserted
-        if not self.msgKey_:
+        if not self.datadesc_:
             return False
-        print("RET " , len(self.patches_), self.msgKey_.npatches, self.domain_.levels, (len(self.patches_) == self.msgKey_.npatches * self.domain_.levels) and (len(self.patches_) != 0))
-        return (len(self.patches_) == self.msgKey_.npatches * self.domain_.levels) and (len(self.patches_) != 0)
-
-
-class DataDesc:
-    def __init__(self, field: fieldop.field3d, msgKey: MsgKey):
-        self.data_: fieldop.field3d = field
-        self.metadata_: MsgKey = msgKey
+        print("RET " , len(self.patches_), self.npatches_, self.datadesc_.levlen, (len(self.patches_) == self.npatches_ * self.datadesc_.levlen) and (len(self.patches_) != 0))
+        return (len(self.patches_) == self.npatches_ * self.datadesc_.levlen) and (len(self.patches_) != 0)
 
 class DataPool:
 
@@ -91,4 +111,4 @@ class DataPool:
         return self.data_[item]
 
     def insert(self, timestamp, fieldname, field, msgKey):
-        self.data_.setdefault(timestamp, {})[fieldname] = DataDesc(field, msgKey)
+        self.data_.setdefault(timestamp, {})[fieldname] = FieldObject(field, msgKey)
