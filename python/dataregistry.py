@@ -68,7 +68,8 @@ class DataRegistry:
         f = open(config_filename, "r", encoding="utf-8")
         datad = yaml.load(f, Loader=yaml.Loader)
 
-        self.subscribe(list(datad[tag]['fields'].keys()))
+        fields = list(datad[tag]['fields'].keys())
+        self.subscribe([data.UserDataReq(x, None) for x in fields])
 
     def complete(self):
         for groupId, group in enumerate(self.groupRequests_):
@@ -129,22 +130,40 @@ class DataRegistry:
         print("Deleting timestamp ", requestHandle.groupId_, requestHandle.timestamp_)
         del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[requestHandle.timestamp_]
 
-    def registerAll(self):
+    def setRegisterAll(self):
         self.registerAll_ = True
 
     def subscribeIfNotExists(self, topic):
         for groupId, gr in enumerate(self.groupRequests_):
             if topic in [x.name for x in gr.reqFields_]:
                 return RequestHandle(groupId, None)
-        return DataRegistry.subscribe(self, [topic])
+        return DataRegistry.createNewGroupRequest(self, [data.UserDataReq(topic, None)])
+ 
+    def subscribe(self, userDataReqs):
+        if len(userDataReqs) > 1:
+            for field in [x.name for x in userDataReqs]:
+                if field.find('*') != -1:
+                    raise RuntimeError("If wildcard is used, only one field (.*) can be declared:", field)
+        
+            self.subscribeImpl(userDataReqs=userDataReqs, registerall=False)
+        else:
+            if userDataReqs[0].name == ".*":
+                self.subscribeImpl(userDataReqs=userDataReqs, registerall=True)
+            else:
+                self.subscribeImpl(userDataReqs=userDataReqs, registerall=False)
 
-    def subscribe(self, topics):
-        if topics == ['.*']:
-            self.registerAll()
+
+    def subscribeImpl(self, *, userDataReqs, registerall : bool):
+        if registerall:
+            self.setRegisterAll()
+            #groups will be created as messages arrive, one group per field
             return RequestHandle(None, None)
+        
+        return self.createNewGroupRequest(userDataReqs)
 
+    def createNewGroupRequest(self, userDataReqs):
         self.groupRequests_.append(GroupRequest())
-        self.groupRequests_[-1].reqFields_ = [data.UserDataReq(x, None) for x in topics]
+        self.groupRequests_[-1].reqFields_ = userDataReqs
         return RequestHandle(len(self.groupRequests_) - 1, None)
 
     def insertDataPatch(self, requestHandle: RequestHandle, fieldname, singlePatch, msgKey):
@@ -177,13 +196,13 @@ class DataRegistryStreaming(DataRegistry):
     def __del__(self):
         self.c_.close()
 
-    def subscribe(self, topics):
-        DataRegistry.subscribe(self, topics)
+    def subscribeImpl(self, *, userDataReqs, registerall):
+        DataRegistry.subscribeImpl(self, userDataReqs=userDataReqs, registerall=registerall)
 
-        if topics == ['.*']:
+        if registerall:
             self.c_.subscribe(["^cosmo_.*"])
         else:
-            self.c_.subscribe(["cosmo_"+x for x in topics])
+            self.c_.subscribe(["cosmo_"+x.name for x in userDataReqs])
 
     def poll(self, seconds):
         msg = self.c_.poll(seconds)
@@ -269,14 +288,11 @@ class DataRegistryFile(DataRegistry):
         self.npart_ = [2, 3]
         DataRegistry.__init__(self)
 
-    def subscribe(self, topics):
-        requestHandle = DataRegistry.subscribe(self, topics)
-        self.sendGribData(requestHandle=requestHandle, topics=topics)
+    def subscribeImpl(self, *, userDataReqs, registerall):
+        requestHandle = DataRegistry.subscribeImpl(self, userDataReqs = userDataReqs, registerall=registerall)
+        self.sendGribData(requestHandle=requestHandle, userDataReqs = userDataReqs)
 
         return requestHandle
-
-    def registerAll(self):
-        DataRegistry.registerAll(self)
 
     def wait(self):
         pass
@@ -333,11 +349,11 @@ class DataRegistryFile(DataRegistry):
                       tzinfo=timezone.utc)
         return int(datetime.timestamp(dt))
 
-    def sendGribData(self, *, requestHandle: RequestHandle = None, topics=None):
-        if not self.registerAll_ and (not requestHandle or not topics):
+    def sendGribData(self, *, requestHandle: RequestHandle = None, userDataReqs=None):
+        if not self.registerAll_ and (not requestHandle or not userDataReqs):
             raise RuntimeError("If not all topics are registered, we need to pass a request handle and list of topics")
 
-        ltopics = topics
+        luserDataReqs = userDataReqs
         with ecc.GribFile(self.filename_) as grib:
             nlevels = {}
             #Warning do not use/print/etc len(grib), for strange reasons it will always return the same msg
@@ -346,7 +362,6 @@ class DataRegistryFile(DataRegistry):
 
                 fieldname = self.getGribFieldname(msg)
                 # fieldname2 = self.getGribFieldname(msg)
-
                 if not fieldname:
                     print('WARNING: found a grib field with no match in table : ', msg['cfVarName'],
                           msg['table2Version'], msg['indicatorOfParameter'], msg['indicatorOfTypeOfLevel'])
@@ -356,7 +371,7 @@ class DataRegistryFile(DataRegistry):
                     requestHandle = DataRegistry.subscribeIfNotExists(self, fieldname)
                     assert requestHandle
 
-                if fieldname in ltopics or self.registerAll_:
+                if fieldname in [x.name for x in luserDataReqs] or self.registerAll_:
                     timestamp = self.getTimestamp(msg)
 
                     nlevels.setdefault(timestamp, {}).setdefault(fieldname, 0)

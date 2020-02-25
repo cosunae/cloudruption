@@ -1,22 +1,17 @@
 default:
   fields:
+    locations:
+      - KLO
+      - GVE
+      - PAY
+      - OTL
+
     T_2M:
       desc:
         region: cuboid
         hsize: [1,1]
 
-      locations:
-      - KLO
-      - GVE
-      - PAY
-      - OTL
     TD_2M:
       desc: 
         region: cuboid
         hsize: [1,1]
-
-      locations:
-      - KLO
-      - GVE
-      - PAY
-      - OTL

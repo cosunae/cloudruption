@@ -16,7 +16,6 @@ import grid_operator as go
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='toNetCDF')
     parser.add_argument('--file', help='grib/netcdf filename')
-    parser.add_argument('--topics', help='comma separated list of topics to subscribe')
 
     args = parser.parse_args()
     if args.file:
@@ -24,10 +23,7 @@ if __name__ == '__main__':
     else:
         reg = dreg.DataRegistryStreaming()
 
-    if args.topics:
-        reg.subscribe(args.topics.split(','))
-    else:
-        reg.loadData(__file__.replace(".py", ".yaml"))
+    reg.loadData(__file__.replace(".py", ".yaml"))
 
     tmpDatapool = data.DataPool()
 

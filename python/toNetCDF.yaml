@@ -1,4 +1,6 @@
 default:
   fields:
-    .*:
-      desc: misc
+    U:
+      desc: 3d
+    V:
+      desc: 3d
