@@ -98,12 +98,6 @@ class DataRegistry:
 
         return None
 
-    def wait(self, groupId):
-        while not self.completeg(groupId):
-            self.poll(1.0)
-
-        return self.complete(groupId)
-
     def gatherFields(self, datapool: data.DataPool):
         for groupId, groupRequest in enumerate(self.groupRequests_):
             while len(groupRequest.timeDataRequests_):
@@ -144,7 +138,7 @@ class DataRegistry:
         return DataRegistry.subscribe(self, [topic])
 
     def subscribe(self, topics):
-        if topics == ['^.*']:
+        if topics == ['.*']:
             self.registerAll()
             return RequestHandle(None, None)
 
@@ -184,7 +178,11 @@ class DataRegistryStreaming(DataRegistry):
 
     def subscribe(self, topics):
         DataRegistry.subscribe(self, topics)
-        self.c_.subscribe(topics)
+
+        if topics == ['.*']:
+            self.c_.subscribe(["^cosmo_.*"])
+        else:
+            self.c_.subscribe(["cosmo_"+x for x in topics])
 
     def poll(self, seconds):
         msg = self.c_.poll(seconds)
@@ -205,7 +203,7 @@ class DataRegistryStreaming(DataRegistry):
             return
 
         for groupId, groupRequests in enumerate(self.groupRequests_):
-            if msKey.key[0] in groupRequests.reqFields_:
+            if msKey.key[0] in [x.name for x in groupRequests.reqFields_]:
                 field = msKey.key[0]
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,
                                      fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen,

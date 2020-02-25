@@ -438,8 +438,10 @@ public:
         headerData.filename,
         filename.substr(0, std::min((size_t)(256), filename.length())).c_str());
 
+    std::string topic = std::string("cosmo_")+fieldname;
+
     RdKafka::ErrorCode resp = producer_->produce(
-        fieldname, partition_,
+        topic, partition_,
         RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
         /* Value */
         static_cast<void *>(&(headerData)), sizeof(headerData),
@@ -466,8 +468,10 @@ public:
         headerData.filename,
         filename.substr(0, std::min((size_t)(256), filename.length())).c_str());
 
+    std::string topic = std::string("cosmo_")+fieldname;
+
     RdKafka::ErrorCode resp = producer_->produce(
-        fieldname, partition_,
+        topic, partition_,
         RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
         /* Value */
         static_cast<void *>(&(headerData)), sizeof(headerData),
@@ -493,8 +497,10 @@ public:
          * Produce message
          */
 
+        std::string topic = std::string("cosmo_")+fieldname;
+
         RdKafka::ErrorCode resp = producer_->produce(
-            fieldname, partition_,
+            topic, partition_,
             RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
             /* Value */
             static_cast<void *>(&(fHandler_.getSubdomainField()(0, 0, lev))),
