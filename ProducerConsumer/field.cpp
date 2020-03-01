@@ -13,7 +13,8 @@ BBox BBox::boundingBox(const BBox &other) const {
 
 float &field3d::operator()(int i, int j, int k) {
   if (i * m_strides[0] + j * m_strides[1] + k * m_strides[2] >=
-      m_i * m_j * m_k) {
+          m_i * m_j * m_k ||
+      i < 0 || j < 0 || k < 0) {
     std::cout << "RRRRRRERROR i:" << i << " j:" << j << " k: " << k
               << "m_i:" << m_i << " m_j:" << m_j << " m_k: " << m_k
               << std::endl;

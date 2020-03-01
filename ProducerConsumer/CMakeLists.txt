@@ -11,6 +11,7 @@ if(ENABLE_PRODUCER)
 endif()
 if(ENABLE_MPI)
   find_package(MPI COMPONENTS CXX REQUIRED)
+  find_package(eccodes)
 endif()
 
 #FetchContent_Declare(pybind11
@@ -58,6 +59,8 @@ if(ENABLE_PRODUCER)
   target_link_libraries(producer ${netCDF_LIBRARIES})
   target_link_libraries(producer ${RDKAFKA_LIBRARIES})
   target_link_libraries(producer ${MPI_CXX_LIBRARIES})
+  target_link_libraries(producer eccodes)
+ 
 endif()
 
 add_executable(consumer consumer.cpp ${COMMONSRC})

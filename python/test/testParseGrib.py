@@ -1,7 +1,7 @@
 import unittest
 
 import numpy as np
-import parseGrib
+#import parseGrib
 import parseGrib as grib
 
 
@@ -19,6 +19,16 @@ class TestParseGrib(unittest.TestCase):
 
         self.assertEqual(grib.typeLevelParams["surface"], 1)
         self.assertEqual(grib.typeLevelParams["meanSea"], 102)
+
+    def test_getfield(self):
+        self.assertEqual(grib.getGribFieldname(table2Version=244, indicatorOfParameter=96,
+                                               indicatorOfTypeOfLevel="sfc", typeOfLevel="surface", timeRangeIndicator=0), "ALNUhcem")
+        self.assertEqual(grib.getGribFieldname(table2Version=201, indicatorOfParameter=139,
+                                               indicatorOfTypeOfLevel="ml", typeOfLevel="hybridLayer", timeRangeIndicator=0), "PP")
+        self.assertEqual(grib.getGribFieldname(table2Version=2, indicatorOfParameter=33,
+                                               indicatorOfTypeOfLevel="ml", typeOfLevel="hybridLayer", timeRangeIndicator=0), "U")
+        self.assertEqual(grib.getGribFieldname(table2Version=2, indicatorOfParameter=51,
+                                               indicatorOfTypeOfLevel="ml", typeOfLevel="hybridLayer", timeRangeIndicator=0), "QV")
 
 
 if __name__ == '__main__':

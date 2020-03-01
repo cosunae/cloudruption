@@ -34,6 +34,7 @@ public:
   size_t isize() const { return m_i; }
   size_t jsize() const { return m_j; }
   size_t ksize() const { return m_k; }
+  size_t size() const { return m_i * m_j * m_k; }
   std::array<size_t, 3> strides() const { return m_strides; }
 };
 

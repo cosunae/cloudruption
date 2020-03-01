@@ -1,8 +1,9 @@
 #include "Config.h"
 #include "KeyMessage.h"
 #include "SinglePatch.h"
+#include "eccodes.h"
+#include <algorithm>
 #include <assert.h>
-#include <bits/stdc++.h>
 #include <chrono>
 #include <iostream>
 #include <limits.h>
@@ -11,7 +12,9 @@
 #include <netcdf.h>
 #include <numeric>
 #include <rdkafkacpp.h>
+#include <set>
 #include <stdint.h>
+#include <stdio.h>
 #include <string>
 #include <vector>
 
@@ -105,84 +108,228 @@ public:
 
 void mpierror() { MPI_Abort(MPI_COMM_WORLD, -1); }
 
+class KafkaProducer {
+  /*
+   * Create configuration objects
+   */
+  RdKafka::Conf *conf_;
+  const int32_t partition_ = RdKafka::Topic::PARTITION_UA;
+  const std::string broker_;
+
+  RdKafka::Producer *producer_;
+  ExampleDeliveryReportCb ex_dr_cb_;
+  ExampleEventCb ex_event_cb_;
+
+public:
+  KafkaProducer(std::string broker = "localhost:9092")
+      : conf_(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL)),
+        broker_(broker) {
+    std::string errstr;
+
+    /*
+     * Set configuration properties
+     */
+    if (conf_->set("metadata.broker.list", broker_, errstr) !=
+        RdKafka::Conf::CONF_OK) {
+      std::cerr << errstr << std::endl;
+      exit(1);
+    }
+
+    conf_->set("event_cb", &ex_event_cb_, errstr);
+
+    //  if (conf->set("group.id", "group1", errstr) != RdKafka::Conf::CONF_OK)
+    //  {
+    //    std::cerr << errstr << std::endl;
+    //    exit(1);
+    //  }
+
+    //  auto dump = conf->dump();
+    //  for (std::list<std::string>::iterator it = dump->begin();
+    //       it != dump->end();) {
+    //    std::cout << *it << " = ";
+    //    it++;
+    //    std::cout << *it << std::endl;
+    //    it++;
+    //  }
+    //  std::cout << std::endl;
+
+    /* Set delivery report callback */
+    conf_->set("dr_cb", &ex_dr_cb_, errstr);
+
+    /*
+     * Create producer using accumulated global configuration.
+     */
+    producer_ = RdKafka::Producer::create(conf_, errstr);
+    if (!producer_) {
+      std::cerr << "Failed to create producer: " << errstr << std::endl;
+      exit(1);
+    }
+
+    std::cout << "% Created producer " << producer_->name() << std::endl;
+  }
+
+  //  void sendHeader(std::string filename, size_t timestamp,
+  //                  std::string fieldname) {
+  //    std::cout << "Sending header for topic: " << fieldname << std::endl;
+  //    auto key = getMsgKey(ActionType::HeaderData, timestamp, fieldname, -1);
+
+  //    TopicHeader headerData;
+  //    strcpy(
+  //        headerData.filename,
+  //        filename.substr(0, std::min((size_t)(256),
+  //        filename.length())).c_str());
+
+  //    std::string topic = std::string("cosmo_") + fieldname;
+
+  //    RdKafka::ErrorCode resp = producer_->produce(
+  //        topic, partition_, RdKafka::Producer::RK_MSG_COPY /* Copy payload
+  //        */,
+  //        /* Value */
+  //        static_cast<void *>(&(headerData)), sizeof(headerData),
+  //        /* Key */
+  //        &key, sizeof(KeyMessage),
+  //        /* Timestamp (defaults to now) */
+  //        0, NULL);
+
+  //    if (resp != RdKafka::ERR_NO_ERROR) {
+  //      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) <<
+  //      std::endl;
+  //    } else {
+  //      std::cerr << "% Produced Header msg for filename " << filename
+  //                << std::endl;
+  //    }
+  //  }
+
+  //  void sendClose(std::string filename, size_t timestamp,
+  //                 std::string fieldname) {
+  //    std::cout << "Sending close for topic: " << fieldname << std::endl;
+  //    auto key = getMsgKey(ActionType::EndData, timestamp, fieldname, -2);
+
+  //    TopicHeader headerData;
+  //    strcpy(
+  //        headerData.filename,
+  //        filename.substr(0, std::min((size_t)(256),
+  //        filename.length())).c_str());
+
+  //    std::string topic = std::string("cosmo_") + fieldname;
+
+  //    RdKafka::ErrorCode resp = producer_->produce(
+  //        topic, partition_, RdKafka::Producer::RK_MSG_COPY /* Copy payload
+  //        */,
+  //        /* Value */
+  //        static_cast<void *>(&(headerData)), sizeof(headerData),
+  //        /* Key */
+  //        &key, sizeof(KeyMessage),
+  //        /* Timestamp (defaults to now) */
+  //        0, NULL);
+
+  //    if (resp != RdKafka::ERR_NO_ERROR) {
+  //      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) <<
+  //      std::endl;
+  //    } else {
+  //      std::cerr << "% Produced Header msg for filename " << filename
+  //                << std::endl;
+  //    }
+  //  }
+
+  void produce(KeyMessage key, float *data, size_t datasize,
+               std::string fieldname) const {
+    /*
+     * Produce message
+     */
+
+    std::string topic = std::string("cosmo_") + fieldname;
+
+    RdKafka::ErrorCode resp = producer_->produce(
+        topic, partition_, RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
+        /* Value */
+        static_cast<void *>(data), datasize,
+        /* Key */
+        &key, sizeof(KeyMessage),
+        /* Timestamp (defaults to now) */
+        0, NULL);
+
+    if (resp != RdKafka::ERR_NO_ERROR) {
+      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) << std::endl;
+    } else {
+      std::cout << "% Produced message (" << datasize << " bytes)" << std::endl;
+    }
+    producer_->poll(0);
+
+    while (producer_->outq_len() > 0) {
+      std::cerr << "Waiting for " << producer_->outq_len() << std::endl;
+      producer_->poll(1000);
+    }
+  }
+};
+
+long getTimestamp(codes_handle *h) {
+  long year, month, day, hour, minute, second;
+  CODES_CHECK(codes_get_long(h, "year", &year), 0);
+  CODES_CHECK(codes_get_long(h, "month", &month), 0);
+  CODES_CHECK(codes_get_long(h, "day", &day), 0);
+  CODES_CHECK(codes_get_long(h, "hour", &hour), 0);
+  CODES_CHECK(codes_get_long(h, "minute", &minute), 0);
+  CODES_CHECK(codes_get_long(h, "second", &second), 0);
+
+  std::tm c = {(int)second, (int)minute, (int)hour, (int)day, (int)month,
+               (int)year,   0,           0,         -1};
+
+  std::time_t l = std::mktime(&c);
+  return static_cast<long>(l);
+}
+
 class FieldHandler {
   const int mpirank_, mpisize_;
   std::string filename_;
+  long timestamp_;
   GridConf gridconf_;
   SubDomainConf subdomainconf_;
   std::optional<FieldDesc> globalFieldProp_;
   std::optional<FieldDesc> domainFieldProp_;
   std::optional<FieldDesc> patchFieldProp_;
+  std::set<std::string> allFields_;
+  std::unordered_map<std::string, size_t> levels_;
+  std::unordered_map<std::string, std::vector<int>> topLevels_;
+  size_t numMessages_;
 
-  field3d *fglob_ = nullptr;
+  std::unordered_map<std::string, field3d *> fglob_;
   field3d *fsubd_ = nullptr;
 
 public:
-  FieldHandler(int mpirank, int mpisize, std::string filename)
-      : mpirank_(mpirank), mpisize_(mpisize), filename_(filename) {}
+  FieldHandler(int mpirank, int mpisize, std::string filename, long timestamp)
+      : mpirank_(mpirank), mpisize_(mpisize), filename_(filename),
+        timestamp_(timestamp) {
+    // domain decomposition as
+    // 0 1 2
+    // 3 4 5
 
-  int setupGridConf(std::string field) {
-    if (mpirank_ == 0) {
-
-      // domain decomposition as
-      // 0 1 2
-      // 3 4 5
-
-      float a = std::sqrt(mpisize_);
-      for (int i = (int)a; i > 0; --i) {
-        if (mpisize_ % i == 0) {
-          gridconf_.nbx = i;
-          gridconf_.nby = mpisize_ / gridconf_.nbx;
-          break;
-        }
+    float a = std::sqrt(mpisize_);
+    for (int i = (int)a; i > 0; --i) {
+      if (mpisize_ % i == 0) {
+        gridconf_.nbx = i;
+        gridconf_.nby = mpisize_ / gridconf_.nbx;
+        break;
       }
-
-      if (gridconf_.nbx == -1 || gridconf_.nby == -1) {
-        throw std::runtime_error(
-            "Error: could not find a valid domain decomposition");
-      }
-
-      int ierror;
-      int retval;
-      int ncid;
-      if ((retval = nc_open(filename_.c_str(), NC_NOWRITE, &ncid)))
-        ERRC(retval);
-
-      int vid;
-      if ((retval = nc_inq_varid(ncid, field.c_str(), &vid)))
-        ERR(retval);
-
-      int ndims;
-      if ((retval = nc_inq_varndims(ncid, vid, &ndims)))
-        ERRC(retval);
-
-      if (ndims != 4)
-        throw std::runtime_error("Other than 3D fields not yet supported :" +
-                                 std::to_string(ndims));
-
-      int dims[4];
-      if ((retval = nc_inq_vardimid(ncid, vid, dims)))
-        ERRC(retval);
-
-      if ((retval = nc_inq_dimlen(ncid, dims[3], &gridconf_.lonlen)))
-        ERRC(retval)
-
-      if ((retval = nc_inq_dimlen(ncid, dims[2], &gridconf_.latlen)))
-        ERRC(retval)
-
-      if ((retval = nc_inq_dimlen(ncid, dims[1], &gridconf_.levlen)))
-        ERRC(retval)
-      gridconf_.isizepatch =
-          (gridconf_.lonlen + gridconf_.nbx - 1) / gridconf_.nbx;
-
-      gridconf_.jsizepatch =
-          (gridconf_.latlen + gridconf_.nby - 1) / gridconf_.nby;
-
-      if ((retval = nc_close(ncid)))
-        ERRC(retval);
     }
-    MPI_Bcast(&gridconf_, sizeof(GridConf) / sizeof(size_t), MPI_SIZE_T, 0,
-              MPI_COMM_WORLD);
+
+    if (gridconf_.nbx == -1 || gridconf_.nby == -1) {
+      throw std::runtime_error(
+          "Error: could not find a valid domain decomposition");
+    }
+  }
+
+  void setupGlobalField(std::string fieldname) {
+    if (mpirank_ != 0)
+      throw std::runtime_error("global field can only be setup by mpirank 0");
+
+    if (!fglob_.count(fieldname)) {
+      fglob_[fieldname] =
+          new field3d(gridconf_.lonlen, gridconf_.latlen, gridconf_.levlen);
+    }
+  }
+
+  int setupGridConf() {
 
     subdomainconf_.levels = gridconf_.levlen;
 
@@ -205,16 +352,6 @@ public:
     domainFieldProp_ = makeDomainFieldProp(subdomainconf_);
     patchFieldProp_ = makePatchFieldProp(gridconf_);
 
-    if (mpirank_ == 0) {
-      if (fglob_)
-        free(fglob_);
-
-      size_t levelsize = gridconf_.latlen * gridconf_.lonlen * sizeof(float);
-      size_t fieldsize = levelsize * gridconf_.levlen;
-
-      fglob_ =
-          new field3d(gridconf_.lonlen, gridconf_.latlen, gridconf_.levlen);
-    }
     return 0;
   }
 
@@ -239,37 +376,322 @@ public:
       gridconf_.print();
     }
   }
-  int loadField(std::string field) {
+
+  std::string getFieldName(long table2Version, long indicatorOfParameter,
+                           std::string indicatorOfTypeOfLevel, long typeOfLevel,
+                           long timeRangeIndicator) {
+
+    std::string command =
+        std::string("python3 ../python/parseGrib.py --table2Version ") +
+        std::to_string(table2Version) + " --indicatorOfParameter " +
+        std::to_string(indicatorOfParameter) + " --indicatorOfTypeOfLevel " +
+        std::string(indicatorOfTypeOfLevel) + " --typeOfLevel " +
+        std::to_string(typeOfLevel) + " --timeRangeIndicator " +
+        std::to_string(timeRangeIndicator) + " > ./fieldname.decod";
+
+    system(command.c_str());
+    std::string fieldname;
+    std::ifstream readres;
+    readres.open("fieldname.decod");
+    if (!readres) {
+      throw std::runtime_error(
+          "Can not read file with python output fieldname.decod");
+    }
+    while (readres >> fieldname) {
+    }
+    readres.close();
+
+    return fieldname;
+  }
+  void getFileMetadata() {
+    FILE *in = NULL;
+    int err = 0;
+
+    /* Message handle. Required in all the ecCodes calls acting on a
+     * message.*/
+    codes_handle *h = NULL;
     if (mpirank_ == 0) {
-      int retval;
-      int ncid;
-      if ((retval = nc_open(filename_.c_str(), NC_NOWRITE, &ncid)))
-        ERR(retval);
 
-      int uid;
-      if ((retval = nc_inq_varid(ncid, field.c_str(), &uid)))
-        ERR(retval);
+      in = fopen(filename_.c_str(), "rb");
+      if (!in) {
+        printf("ERROR: unable to open file %s\n", filename_.c_str());
+        exit(1);
+      }
 
-      // only loaded for rank = 0
-      size_t startv[4] = {0, 0, 0, 0};
-      size_t countv[4] = {1, gridconf_.levlen, gridconf_.latlen,
-                          gridconf_.lonlen};
+      // We are looping two times over the metadata in order to first get
+      // the number of levels of each field that should be used for every
+      // msg of the second loop that sends data to kafka
+      /* Loop on all the messages in a file.*/
+      while ((h = codes_handle_new_from_file(0, in, PRODUCT_GRIB, &err)) !=
+             NULL) {
+        /* Check of errors after reading a message. */
+        if (err != CODES_SUCCESS)
+          CODES_CHECK(err, 0);
 
-      if ((retval =
-               nc_get_vara_float(ncid, uid, startv, countv, fglob_->data())))
-        ERR(retval);
+        if (timestamp_ != getTimestamp(h))
+          continue;
 
-      if ((retval = nc_close(ncid)))
-        ERR(retval);
+        long ni, nj, table2Version, indicatorOfParameter, timeRangeIndicator;
+        CODES_CHECK(codes_get_long(h, "Ni", &ni), 0);
+        CODES_CHECK(codes_get_long(h, "Nj", &nj), 0);
+        CODES_CHECK(codes_get_long(h, "table2Version", &table2Version), 0);
+        CODES_CHECK(
+            codes_get_long(h, "indicatorOfParameter", &indicatorOfParameter),
+            0);
+        char indicatorOfTypeOfLevel[256];
+        size_t msgsize = 256;
+
+        CODES_CHECK(codes_get_string(h, "indicatorOfTypeOfLevel",
+                                     indicatorOfTypeOfLevel, &msgsize),
+                    0);
+
+        long typeOfLevel;
+        CODES_CHECK(codes_get_long(h, "typeOfLevel", &typeOfLevel), 0);
+
+        CODES_CHECK(
+            codes_get_long(h, "timeRangeIndicator", &timeRangeIndicator), 0);
+
+        std::string fieldname =
+            getFieldName(table2Version, indicatorOfParameter,
+                         std::string(indicatorOfTypeOfLevel), typeOfLevel,
+                         timeRangeIndicator);
+
+        if (fieldname == "None")
+          continue;
+        allFields_.insert(fieldname);
+
+        if (levels_.count(fieldname)) {
+          levels_[fieldname] = levels_[fieldname] + 1;
+        } else {
+          levels_[fieldname] = 1;
+        }
+        long bottomLevel;
+        CODES_CHECK(codes_get_long(h, "bottomLevel", &bottomLevel), 0);
+        long topLevel;
+        CODES_CHECK(codes_get_long(h, "topLevel", &topLevel), 0);
+
+        if (!topLevels_.count(fieldname)) {
+          topLevels_[fieldname] = std::vector<int>();
+          topLevels_[fieldname].push_back(topLevel);
+        } else {
+          auto &levelsList = topLevels_[fieldname];
+          topLevels_[fieldname].insert(
+              std::lower_bound(levelsList.begin(), levelsList.end(), topLevel),
+              topLevel);
+        }
+        /* At the end the codes_handle is deleted to free memory. */
+        codes_handle_delete(h);
+      }
+      fclose(in);
     }
 
-    printConf();
-    scatterSubdomains();
+    size_t allfields_buffersize = 32 * allFields_.size();
+    MPI_Bcast(&allfields_buffersize, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    char fbuff[allfields_buffersize];
 
-    return 0;
+    std::vector<int> fieldsizes(allfields_buffersize / 32);
+    if (mpirank_ == 0) {
+      int i = 0;
+      for (auto &field : allFields_) {
+        strcpy(&(fbuff[32 * i]), field.c_str());
+        fieldsizes[i] = field.size();
+        ++i;
+      }
+    }
+
+    MPI_Bcast(fieldsizes.data(), allfields_buffersize / 32, MPI_INT, 0,
+              MPI_COMM_WORLD);
+
+    MPI_Bcast(&fbuff, allfields_buffersize, MPI_CHAR, 0, MPI_COMM_WORLD);
+
+    if (mpirank_ != 0) {
+      for (int i = 0; i < allfields_buffersize / 32; ++i) {
+        std::stringstream ss;
+        for (int j = 32 * i; j < 32 * i + fieldsizes[i]; ++j)
+          ss << fbuff[j];
+        std::string fieldname;
+        ss >> fieldname;
+        allFields_.insert(fieldname);
+      }
+    } else {
+      for (int i = 0; i < allfields_buffersize / 32; ++i) {
+
+        std::stringstream ss;
+        for (int j = 32 * i; j < 32 * i + fieldsizes[i]; ++j)
+          ss << fbuff[j];
+        std::string fieldname;
+        ss >> fieldname;
+      }
+    }
+
+    int levelssize;
+    if (mpirank_ == 0) {
+      levelssize = levels_.size();
+    }
+    MPI_Bcast(&levelssize, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    std::vector<size_t> levelsflat(levelssize);
+
+    if (mpirank_ == 0) {
+      int i = 0;
+      for (auto &field : allFields_) {
+        levelsflat[i] = levels_[field];
+        i++;
+      }
+    }
+
+    MPI_Bcast(levelsflat.data(), levelssize, MPI_LONG, 0, MPI_COMM_WORLD);
+
+    if (mpirank_ != 0) {
+      int i = 0;
+      for (auto &field : allFields_) {
+        levels_[field] = levelsflat[i];
+        i++;
+      }
+    }
+    numMessages_ = std::accumulate(
+        std::next(levels_.begin()), levels_.end(), levels_.begin()->second,
+        [](int acc, std::pair<std::string, int> p) { return acc + p.second; });
   }
 
-  void scatterSubdomains() {
+  void getMessages() {
+
+    FILE *in = NULL;
+    int err = 0;
+    char *filename = NULL;
+
+    /* Message handle. Required in all the ecCodes calls acting on a
+     * message.*/
+    codes_handle *h = NULL;
+
+    if (mpirank_ == 0) {
+      in = fopen(filename_.c_str(), "rb");
+      if (!in) {
+        printf("ERROR: unable to open file %s\n", filename);
+        exit(1);
+      }
+
+      /* Loop on all the messages in a file.*/
+      while ((h = codes_handle_new_from_file(0, in, PRODUCT_GRIB, &err)) !=
+             NULL) {
+        /* Check of errors after reading a message. */
+        if (err != CODES_SUCCESS)
+          CODES_CHECK(err, 0);
+
+        if (timestamp_ != getTimestamp(h))
+          continue;
+
+        long ni, nj, table2Version, indicatorOfParameter, timeRangeIndicator;
+        CODES_CHECK(codes_get_long(h, "Ni", &ni), 0);
+        CODES_CHECK(codes_get_long(h, "Nj", &nj), 0);
+        CODES_CHECK(codes_get_long(h, "table2Version", &table2Version), 0);
+        CODES_CHECK(
+            codes_get_long(h, "indicatorOfParameter", &indicatorOfParameter),
+            0);
+        char indicatorOfTypeOfLevel[256];
+        size_t msgsize = 256;
+
+        CODES_CHECK(codes_get_string(h, "indicatorOfTypeOfLevel",
+                                     indicatorOfTypeOfLevel, &msgsize),
+                    0);
+
+        long typeOfLevel;
+        CODES_CHECK(codes_get_long(h, "typeOfLevel", &typeOfLevel), 0);
+
+        CODES_CHECK(
+            codes_get_long(h, "timeRangeIndicator", &timeRangeIndicator), 0);
+
+        std::string fieldname =
+            getFieldName(table2Version, indicatorOfParameter,
+                         std::string(indicatorOfTypeOfLevel), typeOfLevel,
+                         timeRangeIndicator);
+
+        if (fieldname == "None")
+          continue;
+
+        gridconf_.lonlen = ni;
+        gridconf_.latlen = nj;
+        gridconf_.levlen = levels_[fieldname];
+
+        setupGridConf();
+
+        setupGlobalField(fieldname);
+
+        size_t values_len;
+        double *values = NULL;
+
+        long topLevel;
+        CODES_CHECK(codes_get_long(h, "topLevel", &topLevel), 0);
+
+        long jConsecutive;
+        CODES_CHECK(codes_get_long(h, "jPointsAreConsecutive", &jConsecutive),
+                    0);
+
+        if (jConsecutive) {
+          throw std::runtime_error("jpoints consecutive not supported");
+        }
+
+        /* get the size of the values array*/
+        CODES_CHECK(codes_get_size(h, "values", &values_len), 0);
+
+        field3d *ffield = fglob_[fieldname];
+        if (values_len != ffield->isize() * ffield->jsize()) {
+          throw std::runtime_error(
+              "values extracted do not match in size with metadata");
+        }
+
+        values = (double *)malloc(values_len * sizeof(double));
+
+        auto &levelsList = topLevels_[fieldname];
+        int k = std::distance(
+            levelsList.begin(),
+            std::lower_bound(levelsList.begin(), levelsList.end(), topLevel));
+
+        /* get data values*/
+        CODES_CHECK(codes_get_double_array(h, "values", values, &values_len),
+                    0);
+
+        for (int i = 0; i < ffield->isize(); ++i) {
+          for (int j = 0; j < ffield->jsize(); ++j) {
+            (*ffield)(i, j, k) = values[i + j * ffield->isize()];
+          }
+        }
+
+        /* At the end the codes_handle is deleted to free memory. */
+        codes_handle_delete(h);
+      }
+
+      fclose(in);
+    }
+  }
+
+  void produce(KafkaProducer const &producer) {
+    for (auto fieldname : allFields_) {
+      if (mpirank_ == 0) {
+        field3d *ffield = fglob_[fieldname];
+
+        gridconf_.lonlen = ffield->isize();
+        gridconf_.latlen = ffield->jsize();
+        gridconf_.levlen = levels_[fieldname];
+      }
+      MPI_Bcast(&gridconf_, sizeof(GridConf) / sizeof(size_t), MPI_SIZE_T, 0,
+                MPI_COMM_WORLD);
+
+      setupGridConf();
+      scatterSubdomains(fieldname);
+
+      std::cout << "Producing " << fieldname << std::endl;
+      for (size_t k = 0; k < gridconf_.levlen; ++k) {
+        producer.produce(getMsgKey(ActionType::Data, timestamp_, fieldname, k),
+                         (&(getSubdomainField()(0, 0, k))),
+                         getDomainFieldProp().getSizes()[0] *
+                             getDomainFieldProp().getSizes()[1] * sizeof(float),
+                         fieldname);
+      }
+    }
+  }
+
+  void scatterSubdomains(std::string fieldname) {
     field3d ft(patchFieldProp_->getSizes()[0], patchFieldProp_->getSizes()[1],
                patchFieldProp_->getSizes()[2]);
 
@@ -312,7 +734,7 @@ public:
 
                 fscat[i * istridet + j * jstridet + k * kstridet +
                       bi * bistridet + bj * bjstridet] =
-                    (*fglob_)(iglb, jglb, (size_t)k);
+                    (*fglob_[fieldname])(iglb, jglb, (size_t)k);
               }
             }
           }
@@ -343,80 +765,17 @@ public:
       }
     }
   }
-};
-
-class KafkaProducer {
-  /*
-   * Create configuration objects
-   */
-  RdKafka::Conf *conf_;
-  const int32_t partition_ = RdKafka::Topic::PARTITION_UA;
-  const std::string broker_;
-  FieldHandler &fHandler_;
-
-  RdKafka::Producer *producer_;
-  ExampleDeliveryReportCb ex_dr_cb_;
-  ExampleEventCb ex_event_cb_;
-
-public:
-  KafkaProducer(FieldHandler &fieldHandler,
-                std::string broker = "localhost:9092")
-      : conf_(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL)),
-        broker_(broker), fHandler_(fieldHandler) {
-    std::string errstr;
-
-    /*
-     * Set configuration properties
-     */
-    if (conf_->set("metadata.broker.list", broker_, errstr) !=
-        RdKafka::Conf::CONF_OK) {
-      std::cerr << errstr << std::endl;
-      exit(1);
-    }
-
-    conf_->set("event_cb", &ex_event_cb_, errstr);
-
-    //  if (conf->set("group.id", "group1", errstr) != RdKafka::Conf::CONF_OK) {
-    //    std::cerr << errstr << std::endl;
-    //    exit(1);
-    //  }
-
-    //  auto dump = conf->dump();
-    //  for (std::list<std::string>::iterator it = dump->begin();
-    //       it != dump->end();) {
-    //    std::cout << *it << " = ";
-    //    it++;
-    //    std::cout << *it << std::endl;
-    //    it++;
-    //  }
-    //  std::cout << std::endl;
-
-    /* Set delivery report callback */
-    conf_->set("dr_cb", &ex_dr_cb_, errstr);
-
-    /*
-     * Create producer using accumulated global configuration.
-     */
-    producer_ = RdKafka::Producer::create(conf_, errstr);
-    if (!producer_) {
-      std::cerr << "Failed to create producer: " << errstr << std::endl;
-      exit(1);
-    }
-
-    std::cout << "% Created producer " << producer_->name() << std::endl;
-  }
-
   KeyMessage getMsgKey(ActionType actionType, size_t timestamp,
                        std::string fieldname, const size_t lev) const {
-    const auto &subdomainconf = fHandler_.getSubdomainconf();
-    auto domainFieldProp = fHandler_.getDomainFieldProp();
-    const auto &gridconf = fHandler_.getGridconf();
+    const auto &subdomainconf = getSubdomainconf();
+    auto domainFieldProp = getDomainFieldProp();
+    const auto &gridconf = getGridconf();
 
     const float dx = 60;
 
     KeyMessage key{
-        actionType, "", fHandler_.getMpiSize(), fHandler_.getMpiRank(),
-        timestamp, subdomainconf.istart, subdomainconf.jstart, lev,
+        actionType, "", getMpiSize(), getMpiRank(), timestamp,
+        subdomainconf.istart, subdomainconf.jstart, lev,
         domainFieldProp.sizes_[0], domainFieldProp.sizes_[1],
         domainFieldProp.sizes_[2], gridconf.lonlen, gridconf.latlen,
         // emulating staggering
@@ -427,108 +786,76 @@ public:
     strcpy(key.key, fieldname.substr(0, 8).c_str());
     return key;
   }
+};
 
-  void sendHeader(std::string filename, size_t timestamp,
-                  std::string fieldname) {
-    std::cout << "Sending header for topic: " << fieldname << std::endl;
-    auto key = getMsgKey(ActionType::HeaderData, timestamp, fieldname, -1);
+class GribDecoder {
+  std::string filename_;
+  int mpirank_;
+  int mpisize_;
 
-    TopicHeader headerData;
-    strcpy(
-        headerData.filename,
-        filename.substr(0, std::min((size_t)(256), filename.length())).c_str());
+public:
+  GribDecoder(int mpirank, int mpisize, std::string filename)
+      : filename_(filename), mpirank_(mpirank), mpisize_(mpisize) {}
 
-    std::string topic = std::string("cosmo_")+fieldname;
+  void decode(KafkaProducer const &producer) {
 
-    RdKafka::ErrorCode resp = producer_->produce(
-        topic, partition_,
-        RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
-        /* Value */
-        static_cast<void *>(&(headerData)), sizeof(headerData),
-        /* Key */
-        &key, sizeof(KeyMessage),
-        /* Timestamp (defaults to now) */
-        0, NULL);
+    FILE *in = NULL;
+    int err = 0;
 
-    if (resp != RdKafka::ERR_NO_ERROR) {
-      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) << std::endl;
-    } else {
-      std::cerr << "% Produced Header msg for filename " << filename
-                << std::endl;
-    }
-  }
+    std::set<long> timestamps;
+    /* Message handle. Required in all the ecCodes calls acting on a
+     * message.*/
+    codes_handle *h = NULL;
+    if (mpirank_ == 0) {
 
-  void sendClose(std::string filename, size_t timestamp,
-                 std::string fieldname) {
-    std::cout << "Sending close for topic: " << fieldname << std::endl;
-    auto key = getMsgKey(ActionType::EndData, timestamp, fieldname, -2);
-
-    TopicHeader headerData;
-    strcpy(
-        headerData.filename,
-        filename.substr(0, std::min((size_t)(256), filename.length())).c_str());
-
-    std::string topic = std::string("cosmo_")+fieldname;
-
-    RdKafka::ErrorCode resp = producer_->produce(
-        topic, partition_,
-        RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
-        /* Value */
-        static_cast<void *>(&(headerData)), sizeof(headerData),
-        /* Key */
-        &key, sizeof(KeyMessage),
-        /* Timestamp (defaults to now) */
-        0, NULL);
-
-    if (resp != RdKafka::ERR_NO_ERROR) {
-      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) << std::endl;
-    } else {
-      std::cerr << "% Produced Header msg for filename " << filename
-                << std::endl;
-    }
-  }
-
-  void produce(size_t timestamp, std::string fieldname, size_t lev) {
-    auto key = getMsgKey(ActionType::Data, timestamp, fieldname, lev);
-
-    for (int i = 0; i < fHandler_.getMpiSize(); ++i) {
-      if (i == fHandler_.getMpiRank()) {
-        /*
-         * Produce message
-         */
-
-        std::string topic = std::string("cosmo_")+fieldname;
-
-        RdKafka::ErrorCode resp = producer_->produce(
-            topic, partition_,
-            RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
-            /* Value */
-            static_cast<void *>(&(fHandler_.getSubdomainField()(0, 0, lev))),
-            fHandler_.getDomainFieldProp().getSizes()[0] *
-                fHandler_.getDomainFieldProp().getSizes()[1] * sizeof(float),
-            /* Key */
-            &key, sizeof(KeyMessage),
-            /* Timestamp (defaults to now) */
-            0, NULL);
-
-        if (resp != RdKafka::ERR_NO_ERROR) {
-          std::cerr << "% Produce failed: " << RdKafka::err2str(resp)
-                    << std::endl;
-        } else {
-          auto subdomainconf = fHandler_.getSubdomainconf();
-          std::cerr << "% Produced message ("
-                    << subdomainconf.isize * subdomainconf.jsize *
-                           subdomainconf.levels * sizeof(float)
-                    << " bytes)" << std::endl;
-        }
-        producer_->poll(0);
-
-        while (producer_->outq_len() > 0) {
-          std::cerr << "Waiting for " << producer_->outq_len() << std::endl;
-          producer_->poll(1000);
-        }
+      in = fopen(filename_.c_str(), "rb");
+      if (!in) {
+        printf("ERROR: unable to open file %s\n", filename_.c_str());
+        exit(1);
       }
-      MPI_Barrier(MPI_COMM_WORLD);
+
+      // We are looping two times over the metadata in order to first get
+      // the number of levels of each field that should be used for every
+      // msg of the second loop that sends data to kafka
+      /* Loop on all the messages in a file.*/
+      while ((h = codes_handle_new_from_file(0, in, PRODUCT_GRIB, &err)) !=
+             NULL) {
+        /* Check of errors after reading a message. */
+        if (err != CODES_SUCCESS)
+          CODES_CHECK(err, 0);
+
+        long timestamp = getTimestamp(h);
+
+        if (timestamps.count(timestamp))
+          continue;
+        else {
+          timestamps.insert(timestamp);
+        }
+        /* At the end the codes_handle is deleted to free memory. */
+        codes_handle_delete(h);
+      }
+      fclose(in);
+    }
+
+    std::vector<long> vtimestamps;
+    std::copy(timestamps.begin(), timestamps.end(),
+              std::back_inserter(vtimestamps));
+
+    long timest_size = vtimestamps.size();
+    MPI_Bcast(&timest_size, 1, MPI_LONG, 0, MPI_COMM_WORLD);
+
+    if (mpirank_ != 0) {
+      vtimestamps.resize(timest_size);
+    }
+    MPI_Bcast(vtimestamps.data(), timest_size, MPI_LONG, 0, MPI_COMM_WORLD);
+
+    for (auto timestamp : vtimestamps) {
+      std::cout << "[" << mpirank_ << "] Processing timestamp :" << timestamp
+                << std::endl;
+      FieldHandler fhandler(mpirank_, mpisize_, filename_, timestamp);
+      fhandler.getFileMetadata();
+      fhandler.getMessages();
+      fhandler.produce(producer);
     }
   }
 };
@@ -547,31 +874,10 @@ int main(int argc, char **argv) {
   auto files = config.getFiles();
 
   for (auto file : files) {
-    FieldHandler fieldHandler(myrank, mpisize, file);
+    KafkaProducer producer(config.getKafkaBroker());
 
-    KafkaProducer producer(fieldHandler, config.getKafkaBroker());
-
-    std::chrono::system_clock::time_point p = std::chrono::system_clock::now();
-    std::time_t tt = std::chrono::system_clock::to_time_t(p);
-    size_t t = static_cast<size_t>(tt);
-
-    for (auto fieldname : topics) {
-      if (fieldHandler.setupGridConf(fieldname))
-        throw std::runtime_error("Error setting up grid");
-
-      producer.sendHeader(file, t, fieldname);
-      fieldHandler.loadField(fieldname);
-
-      for (size_t k = 0; k < fieldHandler.getGridconf().levlen; ++k) {
-        producer.produce(t, fieldname, k);
-      }
-
-      // right now a single close signal from one mpi rank will close the file
-      // of the topic. therefore we need to synchronize all mpi ranks to make
-      // sure that
-      MPI_Barrier(MPI_COMM_WORLD);
-      producer.sendClose(file, t, fieldname);
-    }
+    GribDecoder gribDecoder(myrank, mpisize, file);
+    gribDecoder.decode(producer);
   }
 
   MPI_Finalize();

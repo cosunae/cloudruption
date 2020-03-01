@@ -13,7 +13,7 @@ class DistributedField {
   std::vector<SinglePatch> patches_;
 
 public:
-  DistributedField(std::string fieldName, const DomainConf &domainConf,
+  DistributedField(std::string fieldName, DomainConf domainConf,
                    size_t npatches);
 
   BBox bboxPatches() const;

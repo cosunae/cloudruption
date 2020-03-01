@@ -56,7 +56,6 @@ class staggering_operator:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='destaggering')
     parser.add_argument('--file', help='grib/netcdf filename')
-    parser.add_argument('--topics', help='comma separated list of topics to subscribe')
 
     args = parser.parse_args()
 
@@ -84,10 +83,7 @@ if __name__ == '__main__':
     else:
         reg = dreg.DataRegistryStreaming()
 
-    if args.topics:
-        reg.subscribe(args.topics)
-    else:
-        reg.loadData(__file__.replace(".py",".yaml"), tag="default")
+    reg.loadData(__file__.replace(".py",".yaml"), tag="default")
 
     outreg = dreg.OutputDataRegistryFile("ou_ncfile", tmpDatapool)
 
