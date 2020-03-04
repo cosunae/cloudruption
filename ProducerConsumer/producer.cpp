@@ -280,6 +280,11 @@ long getTimestamp(codes_handle *h) {
   return static_cast<long>(l);
 }
 
+struct FieldMetadata {
+  long longitudeOfFirstGridPoint, longitudeOfLastGridPoint,
+      latitudeOfFirstGridPoint, latitudeOfLastGridPoint;
+};
+
 class FieldHandler {
   const int mpirank_, mpisize_;
   std::string filename_;
@@ -289,7 +294,7 @@ class FieldHandler {
   std::optional<FieldDesc> globalFieldProp_;
   std::optional<FieldDesc> domainFieldProp_;
   std::optional<FieldDesc> patchFieldProp_;
-  std::set<std::string> allFields_;
+  std::unordered_map<std::string, FieldMetadata> allFields_;
   std::unordered_map<std::string, size_t> levels_;
   std::unordered_map<std::string, std::vector<int>> topLevels_;
   size_t numMessages_;
@@ -459,7 +464,22 @@ public:
 
         if (fieldname == "None")
           continue;
-        allFields_.insert(fieldname);
+
+        FieldMetadata fmetadata;
+        CODES_CHECK(codes_get_long(h, "longitudeOfFirstGridPoint",
+                                   &fmetadata.longitudeOfFirstGridPoint),
+                    0);
+        CODES_CHECK(codes_get_long(h, "longitudeOfLastGridPoint",
+                                   &fmetadata.longitudeOfLastGridPoint),
+                    0);
+        CODES_CHECK(codes_get_long(h, "latitudeOfFirstGridPoint",
+                                   &fmetadata.latitudeOfFirstGridPoint),
+                    0);
+        CODES_CHECK(codes_get_long(h, "latitudeOfLastGridPoint",
+                                   &fmetadata.latitudeOfLastGridPoint),
+                    0);
+
+        allFields_[fieldname] = fmetadata;
 
         if (levels_.count(fieldname)) {
           levels_[fieldname] = levels_[fieldname] + 1;
@@ -486,39 +506,56 @@ public:
       fclose(in);
     }
 
-    size_t allfields_buffersize = 32 * allFields_.size();
+    const int maxfieldnamesize = 32;
+    int numFields = allFields_.size();
+
+    MPI_Bcast(&numFields, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    size_t allfields_buffersize = maxfieldnamesize * numFields;
+
     MPI_Bcast(&allfields_buffersize, 1, MPI_INT, 0, MPI_COMM_WORLD);
     char fbuff[allfields_buffersize];
 
-    std::vector<int> fieldsizes(allfields_buffersize / 32);
+    std::vector<int> fieldnamesizes(numFields);
     if (mpirank_ == 0) {
       int i = 0;
       for (auto &field : allFields_) {
-        strcpy(&(fbuff[32 * i]), field.c_str());
-        fieldsizes[i] = field.size();
+        strcpy(&(fbuff[32 * i]), field.first.c_str());
+        fieldnamesizes[i] = field.first.size();
         ++i;
       }
     }
 
-    MPI_Bcast(fieldsizes.data(), allfields_buffersize / 32, MPI_INT, 0,
-              MPI_COMM_WORLD);
+    MPI_Bcast(fieldnamesizes.data(), numFields, MPI_INT, 0, MPI_COMM_WORLD);
 
     MPI_Bcast(&fbuff, allfields_buffersize, MPI_CHAR, 0, MPI_COMM_WORLD);
 
+    std::vector<FieldMetadata> lmetadata(numFields);
+    if (mpirank_ == 0) {
+      int i = 0;
+      for (auto &field : allFields_) {
+        lmetadata[i] = field.second;
+        ++i;
+      }
+    }
+
+    MPI_Bcast(lmetadata.data(), numFields * 4, MPI_LONG, 0, MPI_COMM_WORLD);
+
     if (mpirank_ != 0) {
-      for (int i = 0; i < allfields_buffersize / 32; ++i) {
+      for (int i = 0; i < numFields; ++i) {
         std::stringstream ss;
-        for (int j = 32 * i; j < 32 * i + fieldsizes[i]; ++j)
+        for (int j = 32 * i; j < 32 * i + fieldnamesizes[i]; ++j)
           ss << fbuff[j];
         std::string fieldname;
         ss >> fieldname;
-        allFields_.insert(fieldname);
+        FieldMetadata fmetadata = lmetadata[i];
+        allFields_[fieldname] = fmetadata;
       }
     } else {
-      for (int i = 0; i < allfields_buffersize / 32; ++i) {
+      for (int i = 0; i < numFields; ++i) {
 
         std::stringstream ss;
-        for (int j = 32 * i; j < 32 * i + fieldsizes[i]; ++j)
+        for (int j = 32 * i; j < 32 * i + fieldnamesizes[i]; ++j)
           ss << fbuff[j];
         std::string fieldname;
         ss >> fieldname;
@@ -536,7 +573,7 @@ public:
     if (mpirank_ == 0) {
       int i = 0;
       for (auto &field : allFields_) {
-        levelsflat[i] = levels_[field];
+        levelsflat[i] = levels_[field.first];
         i++;
       }
     }
@@ -546,7 +583,7 @@ public:
     if (mpirank_ != 0) {
       int i = 0;
       for (auto &field : allFields_) {
-        levels_[field] = levelsflat[i];
+        levels_[field.first] = levelsflat[i];
         i++;
       }
     }
@@ -612,7 +649,6 @@ public:
 
         gridconf_.lonlen = ni;
         gridconf_.latlen = nj;
-        std::cout << "IN HERE " << levels_[fieldname] << std::endl;
         gridconf_.levlen = levels_[fieldname];
 
         setupGridConf();
@@ -668,7 +704,9 @@ public:
   }
 
   void produce(KafkaProducer const &producer) {
-    for (auto fieldname : allFields_) {
+    for (auto field : allFields_) {
+      auto fieldname = field.first;
+      auto fieldmetadata = field.second;
       if (mpirank_ == 0) {
         field3d *ffield = fglob_[fieldname];
 
@@ -684,7 +722,8 @@ public:
 
       std::cout << "Producing " << fieldname << std::endl;
       for (size_t k = 0; k < gridconf_.levlen; ++k) {
-        producer.produce(getMsgKey(ActionType::Data, timestamp_, fieldname, k),
+        producer.produce(getMsgKey(ActionType::Data, timestamp_, fieldname,
+                                   fieldmetadata, k),
                          (&(getSubdomainField()(0, 0, k))),
                          getDomainFieldProp().getSizes()[0] *
                              getDomainFieldProp().getSizes()[1] * sizeof(float),
@@ -768,28 +807,23 @@ public:
     }
   }
   KeyMessage getMsgKey(ActionType actionType, size_t timestamp,
-                       std::string fieldname, const size_t lev) const {
+                       std::string fieldname, const FieldMetadata &metadata,
+                       const size_t lev) const {
     const auto &subdomainconf = getSubdomainconf();
     auto domainFieldProp = getDomainFieldProp();
     const auto &gridconf = getGridconf();
 
     const float dx = 60;
 
-    std::cout << "FOR [" << mpirank_ << "]" << fieldname << ","
-              << dx * (domainFieldProp.sizes_[0] - 1) +
-                     (fieldname == "U" ? dx / 2 : 0)
-              << std::endl;
-
-    KeyMessage key{
-        actionType, "", getMpiSize(), getMpiRank(), timestamp,
-        subdomainconf.istart, subdomainconf.jstart, lev,
-        domainFieldProp.sizes_[0], domainFieldProp.sizes_[1],
-        domainFieldProp.sizes_[2], gridconf.lonlen, gridconf.latlen,
-        // emulating staggering
-        (fieldname == "U" ? dx / 2 : 0),
-        dx * (domainFieldProp.sizes_[0] - 1) + (fieldname == "U" ? dx / 2 : 0),
-        (fieldname == "V" ? dx / 2 : 0),
-        dx * (domainFieldProp.sizes_[1] - 1) + (fieldname == "V" ? dx / 2 : 0)};
+    KeyMessage key{actionType, "", getMpiSize(), getMpiRank(), timestamp,
+                   subdomainconf.istart, subdomainconf.jstart, lev,
+                   domainFieldProp.sizes_[0], domainFieldProp.sizes_[1],
+                   domainFieldProp.sizes_[2], gridconf.lonlen, gridconf.latlen,
+                   // emulating staggering
+                   (float)metadata.longitudeOfFirstGridPoint,
+                   (float)metadata.longitudeOfLastGridPoint,
+                   (float)metadata.latitudeOfFirstGridPoint,
+                   (float)metadata.latitudeOfLastGridPoint};
 
     int strlength = std::min(fieldname.size() + 1, (size_t)32);
     fieldname.substr(0, strlength).copy(key.key, strlength);
