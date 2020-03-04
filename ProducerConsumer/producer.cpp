@@ -137,11 +137,11 @@ public:
 
     conf_->set("event_cb", &ex_event_cb_, errstr);
 
-    //  if (conf->set("group.id", "group1", errstr) != RdKafka::Conf::CONF_OK)
-    //  {
-    //    std::cerr << errstr << std::endl;
-    //    exit(1);
-    //  }
+    //    if (conf_->set("group.id", "group1", errstr) !=
+    //    RdKafka::Conf::CONF_OK) {
+    //      std::cerr << errstr << std::endl;
+    //      exit(1);
+    //    }
 
     //  auto dump = conf->dump();
     //  for (std::list<std::string>::iterator it = dump->begin();
@@ -240,6 +240,7 @@ public:
 
     std::string topic = std::string("cosmo_") + fieldname;
 
+    std::cout << "Producing on topic :" << topic << std::endl;
     RdKafka::ErrorCode resp = producer_->produce(
         topic, partition_, RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
         /* Value */
@@ -611,6 +612,7 @@ public:
 
         gridconf_.lonlen = ni;
         gridconf_.latlen = nj;
+        std::cout << "IN HERE " << levels_[fieldname] << std::endl;
         gridconf_.levlen = levels_[fieldname];
 
         setupGridConf();
@@ -714,7 +716,7 @@ public:
 
                 size_t iglb = bi * gridconf_.isizepatch + i;
                 size_t jglb = bj * gridconf_.jsizepatch + j;
-                if (iglb > gridconf_.lonlen || jglb > gridconf_.latlen)
+                if (iglb >= gridconf_.lonlen || jglb >= gridconf_.latlen)
                   continue;
 
                 if (i * istridet + j * jstridet + k * kstridet +
@@ -773,6 +775,11 @@ public:
 
     const float dx = 60;
 
+    std::cout << "FOR [" << mpirank_ << "]" << fieldname << ","
+              << dx * (domainFieldProp.sizes_[0] - 1) +
+                     (fieldname == "U" ? dx / 2 : 0)
+              << std::endl;
+
     KeyMessage key{
         actionType, "", getMpiSize(), getMpiRank(), timestamp,
         subdomainconf.istart, subdomainconf.jstart, lev,
@@ -783,7 +790,11 @@ public:
         dx * (domainFieldProp.sizes_[0] - 1) + (fieldname == "U" ? dx / 2 : 0),
         (fieldname == "V" ? dx / 2 : 0),
         dx * (domainFieldProp.sizes_[1] - 1) + (fieldname == "V" ? dx / 2 : 0)};
-    strcpy(key.key, fieldname.substr(0, 8).c_str());
+
+    int strlength = std::min(fieldname.size() + 1, (size_t)32);
+    fieldname.substr(0, strlength).copy(key.key, strlength);
+    key.key[strlength - 1] = '\0';
+
     return key;
   }
 };

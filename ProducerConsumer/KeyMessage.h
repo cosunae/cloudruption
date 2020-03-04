@@ -6,7 +6,7 @@ enum ActionType { HeaderData, Data, EndData };
 
 struct KeyMessage {
   int actionType_;
-  char key[8];
+  char key[32];
   int npatches;
   int myrank;
   size_t datetime;

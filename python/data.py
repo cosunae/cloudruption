@@ -71,10 +71,10 @@ class DataRequest:
             self.datadesc_ = DataDesc(msgKey.longitudeOfFirstGridPoint, msgKey.longitudeOfLastGridPoint, msgKey.latitudeOfFirstGridPoint,
                                       msgKey.latitudeOfLastGridPoint, msgKey.datetime, msgKey.ilonstart, msgKey.jlatstart, 0, msgKey.totlonlen, msgKey.totlatlen, msgKey.levlen)
         else:
-            #            print("ASSERT", self.datadesc_.longitudeOfFirstGridPoint,
-            #                  msgKey.longitudeOfFirstGridPoint)
-            #            print("ASSERT", self.datadesc_.longitudeOfLastGridPoint,
-            #                  msgKey.longitudeOfLastGridPoint)
+            print("ASSERT", self.datadesc_.longitudeOfFirstGridPoint,
+                  msgKey.longitudeOfFirstGridPoint)
+            print("ASSERT", self.datadesc_.longitudeOfLastGridPoint,
+                  msgKey.longitudeOfLastGridPoint)
 
             assert self.datadesc_.longitudeOfFirstGridPoint == msgKey.longitudeOfFirstGridPoint
             assert self.datadesc_.longitudeOfLastGridPoint == msgKey.longitudeOfLastGridPoint
