@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import parseGrib
 from confluent_kafka import Consumer, KafkaError
+# from kafka import KafkaConsumer
 from dataclasses import dataclass
 from netCDF4 import Dataset
 from values import undef
@@ -63,8 +64,10 @@ class RequestHandle:
 
 @dataclass
 class DataRegistry:
-    groupRequests_ = []
-    registerAll_ = False
+
+    def __init__(self):
+        self.groupRequests_ = []
+        self.registerAll_ = False
 
     def loadData(self, config_filename, *, tag="default"):
         f = open(config_filename, "r", encoding="utf-8")
@@ -191,15 +194,17 @@ class DataRegistry:
 
         assert (fieldname in [x.name for x in groupRequest.reqFields_])
         if not fieldname in dataReqs:
-            dataReqs[fieldname] = data.DataRequest(fieldname)
+            dataReqs[fieldname] = data.DataRequest(
+                data.UserDataReq(fieldname, None))
         dataReqs[fieldname].insert(singlePatch, msgKey)
 
 
 def get_key(msg):
-    c1 = struct.unpack('i8c2i9Q4f', msg)
-    stringlist = ''.join([x.decode('utf-8') for x in c1[1:9]])
-    allargs = list(c1[0:1]) + [stringlist] + list(c1[9:])
+    c1 = struct.unpack('i32c2i9Q4f', msg)
+    stringlist = ''.join([x.decode('utf-8') for x in c1[1:33]])
+    allargs = list(c1[0:1]) + [stringlist] + list(c1[33:])
     key = data.MsgKey(*allargs)
+    key.key = key.key.rstrip('\x00')
     return key
 
 
@@ -208,8 +213,12 @@ class DataRegistryStreaming(DataRegistry):
         self.c_ = Consumer({
             'bootstrap.servers': 'localhost:9092',
             'group.id': group,
-            'auto.offset.reset': 'earliest'
+            'auto.offset.reset': 'earliest',
+            #            # ''
+            #            'debug': "consumer"
         })
+        # self.c_ = KafkaConsumer(bootstrap_servers='localhost:9092',
+        #                        group_id=group)
         DataRegistry.__init__(self)
 
     def __del__(self):
@@ -220,13 +229,14 @@ class DataRegistryStreaming(DataRegistry):
             self, userDataReqs=userDataReqs, registerall=registerall)
 
         if registerall:
+            print("SUBSCRIBING TO ^cosmo_.*")
             self.c_.subscribe(["^cosmo_.*"])
         else:
+            print("SUBSCRIBING TO ", ["cosmo_"+x.name for x in userDataReqs])
             self.c_.subscribe(["cosmo_"+x.name for x in userDataReqs])
 
     def poll(self, seconds):
         msg = self.c_.poll(seconds)
-
         if msg is None:
             return -1
 
@@ -243,10 +253,13 @@ class DataRegistryStreaming(DataRegistry):
             return
 
         # Check if msg region overlaps with request
-
+        if self.registerAll_:
+            # Only subscribe if the field was not registered yet
+            requestHandle = DataRegistry.subscribeIfNotExists(self, msKey.key)
+            assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
-            if msKey.key[0] in [x.name for x in groupRequests.reqFields_]:
-                field = msKey.key[0]
+            if msKey.key in [x.name for x in groupRequests.reqFields_]:
+                field = msKey.key
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,
                                      fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen,
                                                          msKey.level,
@@ -353,8 +366,6 @@ class DataRegistryFile(DataRegistry):
                         self, fieldname)
                     assert requestHandle
 
-                print("kkk", msg["cfVarName"], msg.keys(), msg["table2Version"], msg["indicatorOfParameter"],
-                      msg["indicatorOfTypeOfLevel"], msg["typeOfLevel"], msg["timeRangeIndicator"],  msg["jPointsAreConsecutive"])
                 if fieldname in [x.name for x in luserDataReqs] or self.registerAll_:
                     timestamp = self.getTimestamp(msg)
 
