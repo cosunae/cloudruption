@@ -14,13 +14,16 @@ import data
 import uuid
 import grid_operator as go
 
+
 @stencil
 def stencilx(a):
-    return np.float32(0.5) * (a[-1,0,0] + a[1, 0,0 ])
+    return np.float32(0.5) * (a[-1, 0, 0] + a[1, 0, 0])
+
 
 @stencil
 def stencily(a):
-    return np.float32(0.5) * (a[0,-1,0] + a[0, 1,0 ])
+    return np.float32(0.5) * (a[0, -1, 0] + a[0, 1, 0])
+
 
 def destagger(field, stagx, stagy):
     garray = np.array(field, copy=False)
@@ -32,26 +35,35 @@ def destagger(field, stagx, stagy):
 
     return garray
 
+
 class staggering_operator:
     def __init__(self, dx, dy):
         self.dx_ = dx
         self.dy_ = dy
 
-    def __call__(self, datapool: data.DataPool, timestamp, gbc ):
-        for fieldname in tmpDatapool[timestamp]:
-            key = datapool[timestamp][fieldname].metadata_
+    def __call__(self, datapool: data.DataPool, timestamp, gbc):
+        for fieldname in datapool[timestamp]:
+            if fieldname == "T":
+                print("Nont inser")
+                continue
+            key = datapool[timestamp][fieldname].datadesc_
             field = datapool[timestamp][fieldname].data_
-            dx_stag = (key.longitudeOfLastGridPoint - hsurfkey.longitudeOfLastGridPoint) / self.dx_
-            dy_stag = (key.latitudeOfLastGridPoint - hsurfkey.latitudeOfLastGridPoint) / self.dy_
+            dx_stag = (key.longitudeOfLastGridPoint -
+                       hsurfkey.longitudeOfLastGridPoint) / self.dx_
+            dy_stag = (key.latitudeOfLastGridPoint -
+                       hsurfkey.latitudeOfLastGridPoint) / self.dy_
             xstag = math.isclose(dx_stag, 0.5, rel_tol=1e-5)
             ystag = math.isclose(dy_stag, 0.5, rel_tol=1e-5)
             if xstag or ystag:
-                print("Field :", fieldname, " is staggered in (x,y):", xstag, ",", ystag)
+                print("Field :", fieldname,
+                      " is staggered in (x,y):", xstag, ",", ystag)
                 staggeredField = destagger(field, math.isclose(dx_stag, 0.5, rel_tol=1e-5),
-                                   math.isclose(dy_stag, 0.5, rel_tol=1e-5))
-                ## Avoid garbage collector
+                                           math.isclose(dy_stag, 0.5, rel_tol=1e-5))
+                # Avoid garbage collector
                 gbc[uuid.uuid1()] = staggeredField
-                datapool.insert(timestamp, fieldname, fieldop.field3d(staggeredField), key)
+                datapool.insert(timestamp, fieldname,
+                                fieldop.field3d(staggeredField), key)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='destaggering')
@@ -64,28 +76,32 @@ if __name__ == '__main__':
     else:
         reghs = dreg.DataRegistryStreaming()
 
-    tmpDatapool = data.DataPool()
+    datapool = data.DataPool()
 
-    reghs.loadData(__file__.replace(".py",".yaml"), tag="masspointref")
-    go.grid_operator()(go.identity(), reghs, tmpDatapool)
+    reghs.loadData(__file__.replace(".py", ".yaml"), tag="masspointref")
+    go.grid_operator()(go.identity(), reghs, datapool)
     hsurfkey = None
-    for timestamp in tmpDatapool.data_:
-        if "T" in tmpDatapool[timestamp]:
-            hsurfkey = tmpDatapool[timestamp]["T"].metadata_
+    for timestamp in datapool.data_:
+        if "T" in datapool[timestamp]:
+            hsurfkey = datapool[timestamp]["T"].datadesc_
 
-    dx = (hsurfkey.longitudeOfLastGridPoint - hsurfkey.longitudeOfFirstGridPoint)/float(hsurfkey.totlonlen-1)
-    dy = (hsurfkey.latitudeOfLastGridPoint - hsurfkey.latitudeOfFirstGridPoint)/float(hsurfkey.totlatlen-1)
+    dx = (hsurfkey.longitudeOfLastGridPoint -
+          hsurfkey.longitudeOfFirstGridPoint)/float(hsurfkey.lonlen-1)
+    dy = (hsurfkey.latitudeOfLastGridPoint -
+          hsurfkey.latitudeOfFirstGridPoint)/float(hsurfkey.latlen-1)
 
     del reghs
+
+    outDatapool = data.DataPool()
 
     if args.file:
         reg = dreg.DataRegistryFile(args.file)
     else:
         reg = dreg.DataRegistryStreaming()
 
-    reg.loadData(__file__.replace(".py",".yaml"), tag="default")
+    reg.loadData(__file__.replace(".py", ".yaml"), tag="default")
 
-    outreg = dreg.OutputDataRegistryFile("ou_ncfile", tmpDatapool)
+    outreg = dreg.OutputDataRegistryFile("ou_ncfile", outDatapool)
 
-    go.grid_operator()(staggering_operator(dx, dy), reg, tmpDatapool, outreg=outreg, service=True)
-
+    go.grid_operator()(staggering_operator(dx, dy), reg,
+                       outDatapool, outreg=outreg, service=True)

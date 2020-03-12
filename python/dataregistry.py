@@ -304,6 +304,7 @@ class OutputDataRegistryFile(OutputDataRegistry):
             if not latdimname in out_nc.dimensions:
                 out_nc.createDimension(latdimname, field.jsize())
 
+            print("CREATE VAR", fieldname)
             fvar = out_nc.createVariable(fieldname, "f4",
                                          (levdimname, latdimname, londimname),
                                          fill_value=-undef)
