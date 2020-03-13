@@ -28,11 +28,20 @@ import plotly.graph_objects as go
 import numpy as np
 from flask_caching import Cache
 import os
+from dataclasses import dataclass
+import itertools
 
 processed = {}
 
 reg = dreg.DataRegistryStreaming("group1"+str(uuid.uuid1()))
 reg.loadData("visualizeData.yaml")
+
+
+@dataclass
+class fieldwrap:
+    name: str
+    is2d: bool
+
 
 print("****************************************************")
 if __name__ == '__main__':
@@ -41,25 +50,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # if args.file:
-    #     reg = dreg.DataRegistryFile(args.file)
-    # else:
-    #     reg = dreg.DataRegistryStreaming()
-
-    # reg.loadData(__file__.replace(".py", ".yaml"))
-
-    # datapool = data.DataPool()
-
-    # outreg = dreg.OutputDataRegistryFile("ou_ncfile", datapool)
-
     # structure of type
-    # [ {"timestamp": 1583230879, "fields": ["U","V"]}]
+    # [ {"timestamp": 1583230879, "fields": [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]}]
     listCompletedFields = []
     datapool = data.DataPool()
 
-#    external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-
-#    app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
     app = dash.Dash(__name__,  meta_tags=[
         {"name": "viewport", "content": "width=device-width"}])
 
@@ -87,24 +82,45 @@ if __name__ == '__main__':
             html.Div([
                 html.Div(id='plot-container', className="topmargin_box"),
                 html.Label('level'),
-                dcc.Slider(
-                    id='level-slider',
-                    min=0,
-                    max=0,
-                    marks={0: "0"},
-                    value=0,
-                ), ],
+                html.Div([
+                    dcc.Slider(
+                        id='level-slider',
+                        min=0,
+                        max=0,
+                        marks={0: "0"},
+                        value=0,
+                    )],
+                )
+            ],
             )
-        ], className="pretty_container eight columns"
+        ], className="pretty_container ten columns"
         ),
         html.Div([
             dash_table.DataTable(
                 id='mytable',
-                columns=[{"name": "fields", "id": "field"}],
+                columns=[{"name": "2d fields", "id": "2d_field"},
+                         {"name": "3d fields", "id": "3d_field"}],
                 data=[],
                 page_action='native',
                 page_current=0,
                 page_size=20,
+                style_header={
+                    'backgroundColor': 'rgb(230, 230, 230)',
+                    'fontWeight': 'bold'
+                },
+                style_data_conditional=[
+                    {
+                        'if': {'row_index': 'odd'},
+                        'backgroundColor': 'rgb(248, 248, 248)'
+                    }
+                ],
+                style_cell_conditional=[
+                    {
+                        'if': {'column_id': c},
+                        'textAlign': 'left',
+                        'else': 'right'
+                    } for c in ['2d_field']
+                ]
             ),
             # intermediate variable, will have style={'display': 'none'}
             html.Div(id='selected-letter'),
@@ -113,15 +129,31 @@ if __name__ == '__main__':
                 interval=1*1000,  # in milliseconds
                 n_intervals=0
             ), ],
-            className="pretty_container eight columns",
+            className="pretty_container four columns",
         )
     ], className="row flex-display",)
 
     def computeOutput(timestampfields):
+        # timestampfields
+        # [fieldwrap("name", is2d=True)]
         mint = 0
         maxt = len(listCompletedFields)-1
 
-        return [[{"field": x} for x in timestampfields], mint, maxt, {i: str(i) for i in range(0, len(listCompletedFields)-1)}]
+        list2dFields = [x.name for x in timestampfields if x.is2d]
+        list3dFields = [x.name for x in timestampfields if not x.is2d]
+
+        fdict = []
+        for f2, f3 in itertools.zip_longest(list2dFields, list3dFields):
+            elemdict = {}
+            if f2:
+                elemdict["2d_field"] = f2
+            if f3:
+                elemdict["3d_field"] = f3
+
+            fdict.append(elemdict)
+
+        print('GGGG', fdict)
+        return [fdict, mint, maxt, {i: str(i) for i in range(0, len(listCompletedFields)-1)}]
 
     @cache.memoize()
     def processCompletedFields(n, timestamp_index):
@@ -141,9 +173,11 @@ if __name__ == '__main__':
         global reg
 
         for i in range(30):
-            reg.poll(3)
+            reg.poll(0.1)
             reqHandle = reg.complete()
             if reqHandle:
+                timestamp = reqHandle.timestamp_
+
                 reg.gatherField(reqHandle, datapool)
 
                 allTimestamps = [x["timestamp"] for x in listCompletedFields]
@@ -153,15 +187,19 @@ if __name__ == '__main__':
                     tCompletedFields = listCompletedFields[-1].setdefault(
                         "fields", [])
                 else:
+                    # find the timestamp element
                     tCompletedFields = next(
                         x["fields"] for x in listCompletedFields if x["timestamp"] == reqHandle.timestamp_)
 
                 fields = [x.name for x in reg.groupRequests_[
                     reqHandle.groupId_].reqFields_]
                 print('Completed ', fields)
-                for x in fields:
-                    if x not in tCompletedFields:
-                        tCompletedFields.append(x)
+                for field in fields:
+                    datadesc = datapool[timestamp][field].datadesc_
+
+                    is2d = True if datadesc.levlen == 1 else False
+                    if field not in [p.name for p in tCompletedFields]:
+                        tCompletedFields.append(fieldwrap(field, is2d))
 
         if not listCompletedFields:
             tCompletedFields = []
@@ -175,6 +213,16 @@ if __name__ == '__main__':
                   [Input('interval-component', 'n_intervals'), Input('timestamp-slider', "value")])
     def receive_data(n, timestamp_index):
         return processCompletedFields(n, timestamp_index)
+
+    def getFieldnameFromList(fieldIs2d, listFields, elementid):
+        # listFields in format [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]
+        cnt = 0
+        for f in listFields:
+            if f.is2d != fieldIs2d:
+                continue
+            if cnt == elementid:
+                return f.name
+            cnt += 1
 
     @app.callback(
         [Output('selected-letter', 'children'),
@@ -197,8 +245,13 @@ if __name__ == '__main__':
             if idx >= len(listFields):
                 return "", "", 0, {0: "0"}
 
-            fieldname = listFields[(
-                active_cell["row"] + page_current*page_size)]
+            fieldIs2d = False
+            if active_cell["column"] == 0:
+                fieldIs2d = True
+
+            fieldname = getFieldnameFromList(
+                fieldIs2d, listFields, active_cell["row"] + page_current*page_size)
+
             field = datapool[timestamp][fieldname].data_
             fieldarr = np.array(field, copy=False)
 
@@ -207,6 +260,8 @@ if __name__ == '__main__':
                     go.Heatmap(z=fieldarr.transpose()[level, :, :])],
                 'layout': dict(
                     margin={'l': 40, 'b': 40, 't': 40, 'r': 10},
+                    width=1000,
+                    height=600,
                     legend={'x': 0, 'y': 1},
                     hovermode='closest',
                     title=fieldname

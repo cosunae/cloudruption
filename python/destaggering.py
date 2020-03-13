@@ -43,9 +43,6 @@ class staggering_operator:
 
     def __call__(self, datapool: data.DataPool, timestamp, gbc):
         for fieldname in datapool[timestamp]:
-            if fieldname == "T":
-                print("Nont inser")
-                continue
             key = datapool[timestamp][fieldname].datadesc_
             field = datapool[timestamp][fieldname].data_
             dx_stag = (key.longitudeOfLastGridPoint -
@@ -86,9 +83,9 @@ if __name__ == '__main__':
             hsurfkey = datapool[timestamp]["T"].datadesc_
 
     dx = (hsurfkey.longitudeOfLastGridPoint -
-          hsurfkey.longitudeOfFirstGridPoint)/float(hsurfkey.lonlen-1)
+          hsurfkey.longitudeOfFirstGridPoint)/float(hsurfkey.totlonlen-1)
     dy = (hsurfkey.latitudeOfLastGridPoint -
-          hsurfkey.latitudeOfFirstGridPoint)/float(hsurfkey.latlen-1)
+          hsurfkey.latitudeOfFirstGridPoint)/float(hsurfkey.totlatlen-1)
 
     del reghs
 

@@ -19,6 +19,7 @@ from netCDF4 import Dataset
 from values import undef
 import yaml
 import os.path
+import datarequest as dreq
 
 
 class ActionType(IntEnum):
@@ -52,6 +53,7 @@ class NullRequest:
 # Warning, dataclass decorator here generates static members
 class GroupRequest:
     def __init__(self):
+        # { timestamp: {"field": DataRequest} }
         self.timeDataRequests_ = {}
         self.reqFields_ = {}
 
@@ -77,16 +79,16 @@ class DataRegistry:
         for field, fieldval in datad[tag]['fields'].items():
             datareqdesc = None
 
-            if 'cuboid' in fieldval['region']:
-                datareqdesc = data.DataReqDesc(
-                    *(fieldval['region']['cuboid']['hregion'].split(',')))
-                print("DDD", datareqdesc)
+#            if 'cuboid' in fieldval['region']:
+#                datareqdesc = data.DataReqDesc(
+#                    *(fieldval['region']['cuboid']['hregion'].split(',')))
             userdatareqs.append(data.UserDataReq(field, datareqdesc))
 
         self.subscribe(userdatareqs)
 
     def complete(self):
         for groupId, group in enumerate(self.groupRequests_):
+            print("check completeness of group", groupId, )
             reqHandle = self.completeg(groupId)
             if reqHandle:
                 return reqHandle
@@ -97,8 +99,9 @@ class DataRegistry:
         groupRequest = self.groupRequests_[groupId]
 
         dataRequestDict = groupRequest.timeDataRequests_[timestamp]
-
+        print("checking for completeness of groupd/timestamp", groupId, timestamp)
         for field in [x.name for x in groupRequest.reqFields_]:
+            print(" ... checking field", field)
             if not dataRequestDict.get(field, NullRequest()).complete():
                 return None
         return RequestHandle(groupId, timestamp)
@@ -129,10 +132,10 @@ class DataRegistry:
 
             dataReq = datareqs[field]
             domain = fieldop.DomainConf(
-                dataReq.datadesc_.lonlen, dataReq.datadesc_.latlen, dataReq.datadesc_.levlen)
+                dataReq.datadesc_.totlonlen, dataReq.datadesc_.totlatlen, dataReq.datadesc_.levlen)
             df = fieldop.DistributedField(field, domain, dataReq.npatches_)
 
-            for patch in dataReq.patches_:
+            for patch in dataReq.completedPatches_:
                 df.insertPatch(patch)
 
             bbox = df.bboxPatches()
@@ -195,7 +198,7 @@ class DataRegistry:
 
         assert (fieldname in [x.name for x in groupRequest.reqFields_])
         if not fieldname in dataReqs:
-            dataReqs[fieldname] = data.DataRequest(
+            dataReqs[fieldname] = dreq.DataRequest(
                 data.UserDataReq(fieldname, None))
         dataReqs[fieldname].insert(singlePatch, msgKey)
 
@@ -305,7 +308,6 @@ class OutputDataRegistryFile(OutputDataRegistry):
             if not latdimname in out_nc.dimensions:
                 out_nc.createDimension(latdimname, field.jsize())
 
-            print("CREATE VAR", fieldname)
             fvar = out_nc.createVariable(fieldname, "f4",
                                          (levdimname, latdimname, londimname),
                                          fill_value=-undef)

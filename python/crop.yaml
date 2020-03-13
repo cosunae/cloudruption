@@ -1,0 +1,12 @@
+# The original COSMO7 data has lon,lat coordinates:
+#lon [-16320, 7200]
+#lat [-9750, 10470]
+
+default:
+  fields:
+    T_2M:
+      region: 
+        cuboid:
+          hregion: -10320, 4200, -570, 5470
+
+
