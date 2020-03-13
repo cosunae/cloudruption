@@ -2,6 +2,7 @@ import portion as P
 import numpy as np
 from dataclasses import dataclass
 import data
+import fieldop
 
 
 @dataclass
@@ -43,7 +44,7 @@ class domain_intervals:
         return KInterval(P.closedopen(self.domain_[0][0].x_.lower, self.domain_[0][self.domain_.shape[1]-1].x_.upper),
                          P.closedopen(self.domain_[0][0].y_.lower, self.domain_[self.domain_.shape[0]-1][0].y_.upper))
 
-    def complete(self, data_desc: data.DataDesc):
+    def complete(self, data_desc: fieldop.DataDesc):
         if not self.contiguous():
             return False
         if self.domain_.size == 0:

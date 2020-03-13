@@ -1,4 +1,5 @@
 #include "DistributedField.h"
+#include "datadesc.h"
 #include <array>
 #include <iostream>
 #include <pybind11/numpy.h>
@@ -9,6 +10,29 @@
 using namespace pybind11::literals;
 
 PYBIND11_MODULE(fieldop, m) {
+
+  pybind11::class_<DataDesc>(m, "DataDesc")
+      .def(pybind11::init([](double a, double b, double c, double d, size_t h,
+                             size_t i, size_t j, size_t k, size_t l, size_t m,
+                             size_t n) {
+        return DataDesc{{a, b, c, d}, h, i, j, k, l, m, n};
+      }))
+      .def_readwrite("longitudeOfFirstGridPoint",
+                     &DataDesc::longitudeOfFirstGridPoint)
+      .def_readwrite("longitudeOfLastGridPoint",
+                     &DataDesc::longitudeOfLastGridPoint)
+      .def_readwrite("latitudeOfFirstGridPoint",
+                     &DataDesc::latitudeOfFirstGridPoint)
+      .def_readwrite("latitudeOfLastGridPoint",
+                     &DataDesc::latitudeOfLastGridPoint)
+      .def_readwrite("datetime", &DataDesc::datetime)
+      .def_readwrite("ilonstart", &DataDesc::ilonstart)
+      .def_readwrite("jlatstart", &DataDesc::jlatstart)
+      .def_readwrite("levelstart", &DataDesc::levelstart)
+      .def_readwrite("totlonlen", &DataDesc::totlonlen)
+      .def_readwrite("totlatlen", &DataDesc::totlatlen)
+      .def_readwrite("levlen", &DataDesc::levlen);
+
   pybind11::class_<DomainConf>(m, "DomainConf")
       .def(pybind11::init<int, int, int>())
       .def_readwrite("isize", &DomainConf::isize)

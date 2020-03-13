@@ -40,6 +40,7 @@ set(COMMONSRC
     KeyMessage.h 
     nctools.cpp 
     nctools.h 
+    datadesc.h
     field.cpp
     field.h
     FieldProp.cpp 

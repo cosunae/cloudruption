@@ -79,9 +79,10 @@ class DataRegistry:
         for field, fieldval in datad[tag]['fields'].items():
             datareqdesc = None
 
-#            if 'cuboid' in fieldval['region']:
-#                datareqdesc = data.DataReqDesc(
-#                    *(fieldval['region']['cuboid']['hregion'].split(',')))
+            if "region" in fieldval.keys():
+                if 'cuboid' in fieldval['region']:
+                    datareqdesc = data.DataReqDesc(
+                        *(fieldval['region']['cuboid']['hregion'].split(',')))
             userdatareqs.append(data.UserDataReq(field, datareqdesc))
 
         self.subscribe(userdatareqs)

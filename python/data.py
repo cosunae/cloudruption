@@ -32,21 +32,10 @@ class DataReqDesc:
     latitudeOfLastGridPoint: float
 
 
-@dataclass
-class DataDesc(DataReqDesc):
-    datetime: np.uint64
-    ilonstart: np.uint64
-    jlatstart: np.uint64
-    levelstart: np.uint64
-    totlonlen: np.uint64
-    totlatlen: np.uint64
-    levlen: np.uint64
-
-
 class FieldObject:
-    def __init__(self, field: fieldop.field3d, datadesc: DataDesc):
+    def __init__(self, field: fieldop.field3d, datadesc: fieldop.DataDesc):
         self.data_: fieldop.field3d = field
-        self.datadesc_: DataDesc = datadesc
+        self.datadesc_: fieldop.DataDesc = datadesc
 
 
 @dataclass
