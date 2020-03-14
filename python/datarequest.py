@@ -21,7 +21,7 @@ class DataRequest:
 
         if not self.datadesc_:
             self.datadesc_ = fieldop.DataDesc(msgKey.longitudeOfFirstGridPoint, msgKey.longitudeOfLastGridPoint, msgKey.latitudeOfFirstGridPoint,
-                                              msgKey.latitudeOfLastGridPoint, msgKey.datetime, msgKey.ilonstart, msgKey.jlatstart, 0,
+                                              msgKey.latitudeOfLastGridPoint, msgKey.datetime, msgKey.ilonstart, msgKey.jlatstart, msgKey.level,
                                               msgKey.totlonlen, msgKey.totlatlen, msgKey.levlen)
         else:
             assert self.datadesc_.longitudeOfFirstGridPoint == msgKey.longitudeOfFirstGridPoint
@@ -31,11 +31,12 @@ class DataRequest:
             assert self.datadesc_.datetime == msgKey.datetime
 #            assert self.datadesc_.ilonstart == msgKey.ilonstart
 #            assert self.datadesc_.jlatstart == msgKey.jlatstart
-            assert self.datadesc_.levelstart == 0
             assert self.datadesc_.totlonlen == msgKey.totlonlen
             assert self.datadesc_.totlatlen == msgKey.totlatlen
+            self.datadesc_.levelstart = min(
+                self.datadesc_.levelstart, msgKey.level)
             # TODO recover
-#            assert self.datadesc_.levlen == msgKey.levlen
+            assert self.datadesc_.levlen == msgKey.levlen
 
         if not self.npatches_:
             self.npatches_ = msgKey.npatches
@@ -43,13 +44,6 @@ class DataRequest:
             assert self.npatches_ == msgKey.npatches
 
         # TODO check in the else the keymsg is compatible with others msgs
-
-    # The NLevels can not come via the msgKey, but rather on a separate header msg
-    def setNLevels(self, nlevels):
-        if not self.datadesc_:
-            assert False
-        else:
-            self.datadesc_.levlen = nlevels
 
     def computePatchInterval(self, patch):
         return di.KInterval(P.closedopen(patch.ilonstart(), patch.ilonstart() + patch.lonlen()),

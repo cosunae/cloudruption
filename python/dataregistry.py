@@ -20,6 +20,7 @@ from values import undef
 import yaml
 import os.path
 import datarequest as dreq
+import bisect
 
 
 class ActionType(IntEnum):
@@ -350,8 +351,30 @@ class DataRegistryFile(DataRegistry):
                 "If not all topics are registered, we need to pass a request handle and list of topics")
 
         luserDataReqs = userDataReqs
+        # timestamp: {fieldname: []}
+        fieldsmetadata = {}
         with ecc.GribFile(self.filename_) as grib:
-            nlevels = {}
+            # Warning do not use/print/etc len(grib), for strange reasons it will always return the same msg
+            for i in range(len(grib)):
+                msg = ecc.GribMessage(grib)
+
+                fieldname = parseGrib.getGribFieldname(table2Version=msg["table2Version"], indicatorOfParameter=msg["indicatorOfParameter"],
+                                                       indicatorOfTypeOfLevel=msg["indicatorOfTypeOfLevel"],
+                                                       typeOfLevel=msg["typeOfLevel"], timeRangeIndicator=msg["timeRangeIndicator"])
+                # fieldname2 = self.getGribFieldname(msg)
+                if not fieldname:
+                    print('WARNING: found a grib field with no match in table : ', msg['cfVarName'],
+                          msg['table2Version'], msg['indicatorOfParameter'], msg['indicatorOfTypeOfLevel'])
+                    continue
+
+                if fieldname in [x.name for x in luserDataReqs] or self.registerAll_:
+                    timestamp = self.getTimestamp(msg)
+                    toplevel = msg["topLevel"]
+                    levels = fieldsmetadata.setdefault(
+                        timestamp, {}).setdefault(fieldname, [])
+                    bisect.insort(levels, toplevel)
+
+        with ecc.GribFile(self.filename_) as grib:
             # Warning do not use/print/etc len(grib), for strange reasons it will always return the same msg
             for i in range(len(grib)):
                 msg = ecc.GribMessage(grib)
@@ -373,9 +396,8 @@ class DataRegistryFile(DataRegistry):
                 if fieldname in [x.name for x in luserDataReqs] or self.registerAll_:
                     timestamp = self.getTimestamp(msg)
 
-                    nlevels.setdefault(timestamp, {}).setdefault(fieldname, 0)
+                    levels = fieldsmetadata[timestamp][fieldname]
 
-                    nlevels[timestamp][fieldname] += 1
                     requestHandle.timestamp_ = timestamp
 
                     ni = msg['Ni']
@@ -387,22 +409,16 @@ class DataRegistryFile(DataRegistry):
 
                     arr = np.reshape(ecc.codes_get_values(
                         msg.gid), (ni, nj), order='F').astype(np.float32)
-                    lev = msg["bottomLevel"]
+                    lev = msg["topLevel"]
 
-                    msgkey = data.MsgKey(1, fieldname, 1, 0, timestamp, 0, 0, lev, ni,
-                                         ni, 60, ni, nj, msg["longitudeOfFirstGridPoint"],
+                    level_index = levels.index(lev)
+                    msgkey = data.MsgKey(1, fieldname, 1, 0, timestamp, 0, 0, level_index, ni,
+                                         ni, len(
+                                             levels), ni, nj, msg["longitudeOfFirstGridPoint"],
                                          msg["longitudeOfLastGridPoint"],
                                          msg["latitudeOfFirstGridPoint"], msg["latitudeOfLastGridPoint"])
                     self.insertDataPatch(requestHandle, fieldname, fieldop.SinglePatch(
-                        0, 0, ni, nj, lev, arr), msgkey)
-
-            # This is the equivalent to sending the header
-            for timestamp in nlevels:
-                for field in nlevels[timestamp]:
-                    for groupRequest in self.groupRequests_:
-                        if field in [x.name for x in groupRequest.reqFields_]:
-                            groupRequest.timeDataRequests_[
-                                timestamp][field].setNLevels(nlevels[timestamp][field])
+                        0, 0, ni, nj, level_index, arr), msgkey)
 
     def poll(self, seconds):
         pass
