@@ -5,14 +5,11 @@ set (CMAKE_CXX_STANDARD 17)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 option(ENABLE_PRODUCER ON)
-set(ENABLE_MPI OFF)
-if(ENABLE_PRODUCER)
-  set(ENABLE_MPI ON)
-endif()
+option(ENABLE_MPI OFF)
 if(ENABLE_MPI)
   find_package(MPI COMPONENTS CXX REQUIRED)
-  find_package(eccodes)
 endif()
+  find_package(eccodes)
 
 #FetchContent_Declare(pybind11
 #  URL https://github.com/pybind/pybind11/archive/v2.4.3.tar.gz
@@ -53,6 +50,9 @@ set(COMMONSRC
 if(ENABLE_PRODUCER)
   add_executable(producer producer.cpp ${COMMONSRC})
 
+  if(ENABLE_MPI)
+    target_compile_definitions(producer PUBLIC ENABLE_MPI)
+  endif()
   target_include_directories(producer SYSTEM PUBLIC ${netCDF_INCLUDE_DIR})
   target_include_directories(producer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
   target_include_directories(producer SYSTEM PUBLIC ${MPI_CXX_INCLUDE_DIRS})

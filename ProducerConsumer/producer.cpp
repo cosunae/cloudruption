@@ -8,7 +8,9 @@
 #include <iostream>
 #include <limits.h>
 #include <math.h>
+#ifdef ENABLE_MPI
 #include <mpi.h>
+#endif
 #include <netcdf.h>
 #include <numeric>
 #include <rdkafkacpp.h>
@@ -106,7 +108,13 @@ public:
   }
 };
 
-void mpierror() { MPI_Abort(MPI_COMM_WORLD, -1); }
+void mpierror() {
+#ifdef ENABLE_MPI
+  MPI_Abort(MPI_COMM_WORLD, -1);
+#else
+  throw std::runtime_error("mpi error");
+#endif
+}
 
 class KafkaProducer {
   /*
@@ -509,11 +517,15 @@ public:
     const int maxfieldnamesize = 32;
     int numFields = allFields_.size();
 
+#ifdef ENABLE_MPI
     MPI_Bcast(&numFields, 1, MPI_INT, 0, MPI_COMM_WORLD);
+#endif
 
     size_t allfields_buffersize = maxfieldnamesize * numFields;
 
+#ifdef ENABLE_MPI
     MPI_Bcast(&allfields_buffersize, 1, MPI_INT, 0, MPI_COMM_WORLD);
+#endif
     char fbuff[allfields_buffersize];
 
     std::vector<int> fieldnamesizes(numFields);
@@ -526,10 +538,11 @@ public:
       }
     }
 
+#ifdef ENABLE_MPI
     MPI_Bcast(fieldnamesizes.data(), numFields, MPI_INT, 0, MPI_COMM_WORLD);
 
     MPI_Bcast(&fbuff, allfields_buffersize, MPI_CHAR, 0, MPI_COMM_WORLD);
-
+#endif
     std::vector<FieldMetadata> lmetadata(numFields);
     if (mpirank_ == 0) {
       int i = 0;
@@ -538,9 +551,9 @@ public:
         ++i;
       }
     }
-
+#ifdef ENABLE_MPI
     MPI_Bcast(lmetadata.data(), numFields * 4, MPI_LONG, 0, MPI_COMM_WORLD);
-
+#endif
     if (mpirank_ != 0) {
       for (int i = 0; i < numFields; ++i) {
         std::stringstream ss;
@@ -566,8 +579,9 @@ public:
     if (mpirank_ == 0) {
       levelssize = levels_.size();
     }
+#ifdef ENABLE_MPI
     MPI_Bcast(&levelssize, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
+#endif
     std::vector<size_t> levelsflat(levelssize);
 
     if (mpirank_ == 0) {
@@ -577,8 +591,9 @@ public:
         i++;
       }
     }
-
+#ifdef ENABLE_MPI
     MPI_Bcast(levelsflat.data(), levelssize, MPI_LONG, 0, MPI_COMM_WORLD);
+#endif
 
     if (mpirank_ != 0) {
       int i = 0;
@@ -714,9 +729,10 @@ public:
         gridconf_.latlen = ffield->jsize();
         gridconf_.levlen = levels_[fieldname];
       }
+#ifdef ENABLE_MPI
       MPI_Bcast(&gridconf_, sizeof(GridConf) / sizeof(size_t), MPI_SIZE_T, 0,
                 MPI_COMM_WORLD);
-
+#endif
       setupGridConf();
       scatterSubdomains(fieldname);
 
@@ -783,11 +799,13 @@ public:
       }
     }
 
+#ifdef ENABLE_MPI
     MPI_Scatter(fscat,
                 gridconf_.isizepatch * gridconf_.jsizepatch * gridconf_.levlen,
                 MPI_FLOAT, ft.data(),
                 gridconf_.isizepatch * gridconf_.jsizepatch * gridconf_.levlen,
                 MPI_FLOAT, 0, MPI_COMM_WORLD);
+#endif
 
     if (mpirank_ == 0) {
       free(fscat);
@@ -801,7 +819,11 @@ public:
     for (size_t k = 0; k < gridconf_.levlen; ++k) {
       for (size_t j = 0; j < subdomainconf_.jsize; ++j) {
         for (size_t i = 0; i < subdomainconf_.isize; ++i) {
+#ifdef ENABLE_MPI
           (*fsubd_)(i, j, k) = ft(i, j, k);
+#else
+          (*fsubd_)(i, j, k) = (*fglob_[fieldname])(i, j, k);
+#endif
         }
       }
     }
@@ -887,13 +909,15 @@ public:
               std::back_inserter(vtimestamps));
 
     long timest_size = vtimestamps.size();
+#ifdef ENABLE_MPI
     MPI_Bcast(&timest_size, 1, MPI_LONG, 0, MPI_COMM_WORLD);
-
+#endif
     if (mpirank_ != 0) {
       vtimestamps.resize(timest_size);
     }
+#ifdef ENABLE_MPI
     MPI_Bcast(vtimestamps.data(), timest_size, MPI_LONG, 0, MPI_COMM_WORLD);
-
+#endif
     for (auto timestamp : vtimestamps) {
       std::cout << "[" << mpirank_ << "] Processing timestamp :" << timestamp
                 << std::endl;
@@ -906,16 +930,18 @@ public:
 };
 
 int main(int argc, char **argv) {
+#ifdef ENABLE_MPI
   MPI_Init(&argc, &argv);
-
-  int myrank, mpisize;
+#endif
+  int myrank = 0;
+  int mpisize = 1;
 
   Config config;
   auto topics = config.getTopics();
-
+#ifdef ENABLE_MPI
   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpisize);
-
+#endif
   auto files = config.getFiles();
 
   for (auto file : files) {
@@ -924,6 +950,7 @@ int main(int argc, char **argv) {
     GribDecoder gribDecoder(myrank, mpisize, file);
     gribDecoder.decode(producer);
   }
-
+#ifdef ENABLE_MPI
   MPI_Finalize();
+#endif
 }
