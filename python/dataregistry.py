@@ -53,10 +53,18 @@ class NullRequest:
 
 # Warning, dataclass decorator here generates static members
 class GroupRequest:
+    """ A group of requested fields that are associated to a group. 
+    A group request is considered completed only when all fields registered 
+    in the group are complete
+
+    Attributes: 
+      reqFields_ ([UserDataReq])
+      timeDataRequests_ ({timestamp: {"field": DataRequest}})
+    """
+
     def __init__(self):
-        # { timestamp: {"field": DataRequest} }
         self.timeDataRequests_ = {}
-        self.reqFields_ = {}
+        self.reqFields_ = []
 
 
 @dataclass
@@ -83,7 +91,7 @@ class DataRegistry:
             if "region" in fieldval.keys():
                 if 'cuboid' in fieldval['region']:
                     datareqdesc = data.DataReqDesc(
-                        *(fieldval['region']['cuboid']['hregion'].split(',')))
+                        *([float(x) for x in fieldval['region']['cuboid']['hregion'].split(',')]))
             userdatareqs.append(data.UserDataReq(field, datareqdesc))
 
         self.subscribe(userdatareqs)
@@ -194,13 +202,19 @@ class DataRegistry:
 
     def insertDataPatch(self, requestHandle: RequestHandle, fieldname, singlePatch, msgKey):
         groupRequest = self.groupRequests_[requestHandle.groupId_]
+        userDataRequests = [
+            x for x in groupRequest.reqFields_ if x.name == fieldname]
+        if len(userDataRequests) > 1:
+            raise RuntimeError("More than one field found")
+
+        userDataRequest = userDataRequests[0]
+
         dataReqs = groupRequest.timeDataRequests_.setdefault(
             requestHandle.timestamp_, {})
 
         assert (fieldname in [x.name for x in groupRequest.reqFields_])
         if not fieldname in dataReqs:
-            dataReqs[fieldname] = dreq.DataRequest(
-                data.UserDataReq(fieldname, None))
+            dataReqs[fieldname] = dreq.DataRequest(userDataRequest)
         dataReqs[fieldname].insert(singlePatch, msgKey)
 
 
@@ -413,7 +427,7 @@ class DataRegistryFile(DataRegistry):
 
                     level_index = levels.index(lev)
                     msgkey = data.MsgKey(1, fieldname, 1, 0, timestamp, 0, 0, level_index, ni,
-                                         ni, len(
+                                         nj, len(
                                              levels), ni, nj, msg["longitudeOfFirstGridPoint"],
                                          msg["longitudeOfLastGridPoint"],
                                          msg["latitudeOfFirstGridPoint"], msg["latitudeOfLastGridPoint"])

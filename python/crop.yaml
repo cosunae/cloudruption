@@ -7,6 +7,6 @@ default:
     T_2M:
       region: 
         cuboid:
-          hregion: -10320, 4200, -570, 5470
+          hregion: -7320, 4200, -4070, 5470
 
 

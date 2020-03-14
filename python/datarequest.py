@@ -20,8 +20,32 @@ class DataRequest:
         self.patches_.append(patch)
 
         if not self.datadesc_:
-            self.datadesc_ = fieldop.DataDesc(msgKey.longitudeOfFirstGridPoint, msgKey.longitudeOfLastGridPoint, msgKey.latitudeOfFirstGridPoint,
-                                              msgKey.latitudeOfLastGridPoint, msgKey.datetime, msgKey.ilonstart, msgKey.jlatstart, msgKey.level,
+            if self.user_data_req_.data_desc:
+                data_desc = self.user_data_req_.data_desc
+
+                dx = (msgKey.longitudeOfLastGridPoint -
+                      msgKey.longitudeOfFirstGridPoint) / msgKey.lonlen
+                ifirst = int((data_desc.longitudeOfFirstGridPoint -
+                              msgKey.longitudeOfFirstGridPoint) / dx)
+                ilast = msgKey.lonlen - 1 - int((msgKey.longitudeOfLastGridPoint -
+                                                 data_desc.longitudeOfLastGridPoint) / dx)
+                dy = (msgKey.longitudeOfLastGridPoint -
+                      msgKey.longitudeOfFirstGridPoint) / msgKey.lonlen
+                jfirst = int((data_desc.latitudeOfFirstGridPoint -
+                              msgKey.latitudeOfFirstGridPoint) / dy)
+                jlast = msgKey.latlen - 1 - int((msgKey.latitudeOfLastGridPoint -
+                                                 data_desc.latitudeOfLastGridPoint) / dy)
+                userReqIndexFrame = [ifirst, ilast, jfirst, jlast]
+                userReqCoordFrame = [data_desc.longitudeOfFirstGridPoint, data_desc.longitudeOfLastGridPoint,
+                                     data_desc.latitudeOfFirstGridPoint, data_desc.latitudeOfLastGridPoint]
+            else:
+                userReqIndexFrame = [0, msgKey.lonlen-1, 0, msgKey.latlen-1]
+                userReqCoordFrame = [msgKey.longitudeOfFirstGridPoint, msgKey.longitudeOfLastGridPoint,
+                                     msgKey.latitudeOfFirstGridPoint, msgKey.latitudeOfLastGridPoint]
+
+            self.datadesc_ = fieldop.DataDesc(*userReqCoordFrame,
+                                              *userReqIndexFrame,
+                                              msgKey.datetime, msgKey.ilonstart, msgKey.jlatstart, msgKey.level,
                                               msgKey.totlonlen, msgKey.totlatlen, msgKey.levlen)
         else:
             assert self.datadesc_.longitudeOfFirstGridPoint == msgKey.longitudeOfFirstGridPoint
