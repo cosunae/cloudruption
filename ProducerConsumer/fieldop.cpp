@@ -12,10 +12,12 @@ using namespace pybind11::literals;
 PYBIND11_MODULE(fieldop, m) {
 
   pybind11::class_<DataDesc>(m, "DataDesc")
-      .def(pybind11::init([](double a, double b, double c, double d, size_t h,
-                             size_t i, size_t j, size_t k, size_t l, size_t m,
-                             size_t n) {
-        return DataDesc{{a, b, c, d}, h, i, j, k, l, m, n};
+      .def(pybind11::init([](double a, double b, double c, double d,
+                             size_t ifirst, size_t ilast, size_t jfirst,
+                             size_t jlast, size_t h, size_t i, size_t j,
+                             size_t k, size_t l, size_t m, size_t n) {
+        return DataDesc{
+            {a, b, c, d, ifirst, ilast, jfirst, jlast}, h, i, j, k, l, m, n};
       }))
       .def_readwrite("longitudeOfFirstGridPoint",
                      &DataDesc::longitudeOfFirstGridPoint)
@@ -25,6 +27,11 @@ PYBIND11_MODULE(fieldop, m) {
                      &DataDesc::latitudeOfFirstGridPoint)
       .def_readwrite("latitudeOfLastGridPoint",
                      &DataDesc::latitudeOfLastGridPoint)
+      .def_readwrite("ifirst", &DataDesc::ifirst)
+      .def_readwrite("ilast", &DataDesc::ilast)
+      .def_readwrite("jfirst", &DataDesc::jfirst)
+      .def_readwrite("jlast", &DataDesc::jlast)
+
       .def_readwrite("datetime", &DataDesc::datetime)
       .def_readwrite("ilonstart", &DataDesc::ilonstart)
       .def_readwrite("jlatstart", &DataDesc::jlatstart)

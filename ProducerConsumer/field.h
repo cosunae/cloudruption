@@ -5,6 +5,9 @@ struct BBox {
   std::array<std::array<size_t, 2>, 3> limits_;
   BBox boundingBox(const BBox &other) const;
 
+  size_t size(const int dim) const {
+    return limits_[dim][1] - limits_[dim][0] + 1;
+  }
   friend std::ostream &operator<<(std::ostream &os, const BBox &);
 };
 

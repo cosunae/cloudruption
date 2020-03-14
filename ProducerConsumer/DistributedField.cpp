@@ -18,9 +18,27 @@ void DistributedField::insertPatch(SinglePatch &patch) {
 void DistributedField::gatherField(field3d &fullfield) {
   int cnt = 0;
   auto bbox = bboxPatches();
+  if (bbox.size(0) != fullfield.isize() || bbox.size(1) != fullfield.jsize() ||
+      bbox.size(2) != fullfield.ksize()) {
+    throw std::runtime_error(
+        "bbox of patches not macthing with allocated field dimensions");
+  }
+
   for (auto &patch : patches_) {
     for (int j = 0; j < patch.latlen(); ++j) {
       for (int i = 0; i < patch.lonlen(); ++i) {
+        // bbox is initialized with the DataReqDesc,
+        // the patch must overlap the frame defined by DataReqDesc, but
+        // a fraction can fall out. We skip those grid points
+        if ((i + patch.ilonStart() < bbox.limits_[0][0]) ||
+            (j + patch.jlatStart() < bbox.limits_[1][0]))
+          continue;
+
+        if ((i + patch.ilonStart() > bbox.limits_[0][1]) ||
+            (j + patch.jlatStart() > bbox.limits_[1][1]))
+          continue;
+
+        int k = patch.lev() - bbox.limits_[2][0];
         fullfield(i + patch.ilonStart() - bbox.limits_[0][0],
                   j + patch.jlatStart() - bbox.limits_[1][0],
                   patch.lev() - bbox.limits_[2][0]) = patch(i, j);
@@ -40,11 +58,16 @@ std::ostream &operator<<(std::ostream &os, const BBox &bb) {
 BBox DistributedField::bboxPatches() const {
   assert(patches_.size() > 0);
 
-  return std::accumulate(std::next(patches_.begin()), patches_.end(),
-                         patches_[0].bbox(),
-                         [](const BBox &box, const SinglePatch &sp1) {
-                           return sp1.bbox().boundingBox(box);
-                         });
+  //  auto bsize = std::accumulate(std::next(patches_.begin()), patches_.end(),
+  //                               patches_[0].bbox(),
+  //                               [](const BBox &box, const SinglePatch &sp1) {
+  //                                 return sp1.bbox().boundingBox(box);
+  //                               });
+
+  return BBox{std::array{datadesc_.ifirst, datadesc_.ilast},
+              std::array{datadesc_.jfirst, datadesc_.jlast},
+              std::array{datadesc_.levelstart,
+                         datadesc_.levelstart + datadesc_.levlen - 1}};
 }
 
 void DistributedField::writeIfComplete(NetCDFDumper &netcdfDumper) {
