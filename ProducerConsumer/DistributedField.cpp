@@ -2,11 +2,10 @@
 #include <assert.h>
 #include <string>
 
-DistributedField::DistributedField(std::string fieldName,
-                                   DomainConf domainConf,
-                                   size_t npatches)
+DistributedField::DistributedField(std::string fieldName, size_t npatches,
+                                   const DataDesc &datadesc)
     // TODO remove domain from here, it does not make sense and is not used
-    : fieldName_(fieldName), domain_(domainConf), npatches_(npatches) {}
+    : fieldName_(fieldName), npatches_(npatches), datadesc_(datadesc) {}
 
 void DistributedField::insertPatch(SinglePatch &&patch) {
   patches_.push_back(std::move(patch));
@@ -60,8 +59,8 @@ void DistributedField::writeIfComplete(NetCDFDumper &netcdfDumper) {
   patches_.clear();
 }
 
-size_t DistributedField::levlen() const { return domain_.levels; }
+size_t DistributedField::levlen() const { return datadesc_.levlen; }
 
-size_t DistributedField::totlonlen() const { return domain_.isize; }
+size_t DistributedField::totlonlen() const { return datadesc_.totlonlen; }
 
-size_t DistributedField::totlatlen() const { return domain_.jsize; }
+size_t DistributedField::totlatlen() const { return datadesc_.totlatlen; }

@@ -43,8 +43,8 @@ PYBIND11_MODULE(fieldop, m) {
 
   pybind11::class_<DistributedField>(m, "DistributedField",
                                      pybind11::buffer_protocol())
-      .def(pybind11::init<const std::string &, const DomainConf &,
-                          unsigned long int>())
+      .def(pybind11::init<const std::string &, unsigned long int,
+                          const DataDesc &>())
       .def("insertPatch", (void (DistributedField::*)(SinglePatch &)) &
                               DistributedField::insertPatch)
       .def("gatherField", &DistributedField::gatherField)

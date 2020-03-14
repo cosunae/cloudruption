@@ -132,9 +132,8 @@ class DataRegistry:
                   requestHandle.timestamp_)
 
             dataReq = datareqs[field]
-            domain = fieldop.DomainConf(
-                dataReq.datadesc_.totlonlen, dataReq.datadesc_.totlatlen, dataReq.datadesc_.levlen)
-            df = fieldop.DistributedField(field, domain, dataReq.npatches_)
+            df = fieldop.DistributedField(
+                field, dataReq.npatches_, dataReq.datadesc_)
 
             for patch in dataReq.completedPatches_:
                 df.insertPatch(patch)

@@ -2,6 +2,7 @@
 #include "DistributedField.h"
 #include "FieldProp.h"
 #include "KeyMessage.h"
+#include "datadesc.h"
 #include "nctools.h"
 #include <cstring>
 #include <filesystem>
@@ -37,11 +38,21 @@ public:
   const std::unique_ptr<DistributedField> &
   getDistField(const KeyMessage &keyMsg) {
     if (!msgs_.count(keyMsg.key)) {
-      DomainConf domain{keyMsg.totlonlen, keyMsg.totlatlen, keyMsg.levlen};
+      DataDesc datadesc{
+          {keyMsg.longitudeOfFirstGridPoint, keyMsg.longitudeOfLastGridPoint,
+           keyMsg.latitudeOfFirstGridPoint, keyMsg.latitudeOfLastGridPoint},
+          keyMsg.datetime,
+          keyMsg.ilon_start,
+          keyMsg.jlat_start,
+          0,
+          keyMsg.totlonlen,
+          keyMsg.totlatlen,
+          keyMsg.levlen};
+
       msgs_.emplace(std::make_pair(
-          keyMsg.key,
-          std::make_unique<DistributedField>(std::string(keyMsg.key), domain,
-                                             keyMsg.npatches * keyMsg.levlen)));
+          keyMsg.key, std::make_unique<DistributedField>(
+                          std::string(keyMsg.key),
+                          keyMsg.npatches * keyMsg.levlen, datadesc)));
     }
     const auto &distField = msgs_.at(keyMsg.key);
     if (keyMsg.levlen != distField->levlen()) {
