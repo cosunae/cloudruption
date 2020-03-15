@@ -26,8 +26,8 @@ RUN wget https://github.com/ecmwf/eccodes/archive/2.12.0.tar.gz && \
     make -j4 install 
 
 RUN git clone https://github.com/cosunae/cloudruption.git && \
-     cd cloudruption/ProducerConsumer && export CXX=g++-8 && export CC=gcc-8 && \
+     cd  cloudruption/ProducerConsumer && export CXX=g++-8 && export CC=gcc-8 && \
     mkdir build && cd build && cmake -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
     make -j3 
 RUN mkdir /home/cloudruption/config    
-ENTRYPOINT ["cloudruption/ProducerConsumer/build/producer", "/home/cloudruption/config/config.json"]
+ENTRYPOINT ["aws/entrypoint.sh"]
