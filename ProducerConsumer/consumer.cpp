@@ -162,12 +162,17 @@ void msg_consume(RdKafka::Message *message, MsgRepo &msgRepo) {
   }
 }
 
-int main() {
+int main(int argc, char **argv) {
 
   std::string errstr;
   char errstrc[512];
 
-  Config config;
+  std::string config_filename = "config.json";
+  if (argc > 1) {
+    config_filename = std::string(argv[1]);
+  }
+  Config config(config_filename);
+
   auto topics = config.getTopics();
   std::string brokers = config.getKafkaBroker();
   /*

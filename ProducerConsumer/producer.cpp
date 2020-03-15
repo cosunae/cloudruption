@@ -936,7 +936,11 @@ int main(int argc, char **argv) {
   int myrank = 0;
   int mpisize = 1;
 
-  Config config;
+  std::string config_filename = "config.json";
+  if (argc > 1) {
+    config_filename = std::string(argv[1]);
+  }
+  Config config(config_filename);
   auto topics = config.getTopics();
 #ifdef ENABLE_MPI
   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);

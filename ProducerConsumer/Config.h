@@ -7,7 +7,7 @@ private:
   std::string jsonConfigFile_;
 
 public:
-  Config() : jsonConfigFile_("config.json") {}
+  Config(std::string configfile) : jsonConfigFile_(configfile) {}
 
   std::vector<std::string> getTopics() {
     nlohmann::json config;
