@@ -25,11 +25,18 @@ RUN wget https://github.com/ecmwf/eccodes/archive/2.12.0.tar.gz && \
     /home/ecbuild-3.1.0/bin/ecbuild ../ -DENABLE_FORTRAN=OFF -DCMAKE_INSTALL_PREFIX=/usr/share/eccodes && \
     make -j4 install 
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip
+
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
+    unzip awscliv2.zip && \
+    ./aws/install
+
 RUN git clone https://github.com/cosunae/cloudruption.git && \
-     cd  cloudruption/ProducerConsumer && export CXX=g++-8 && export CC=gcc-8 && \
+     cd  cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && \
      mkdir build  && cd build &&  cmake  -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
     make -j3 
 RUN mkdir /home/cloudruption/config    
-RUN mkdir /cdata
-RUN chmod +x /home/cloudruption/ProducerConsumer/aws/entrypoint.sh
-ENTRYPOINT ["/home/cloudruption/ProducerConsumer/aws/entrypoint.sh"]
+RUN mkdir /data
+ADD aws/entrypoint.py /home/cloudruption/ProducerConsumer/aws/entrypoint.py
+RUN chmod +x /home/cloudruption/ProducerConsumer/aws/entrypoint.py
+ENTRYPOINT ["/home/cloudruption/ProducerConsumer/aws/entrypoint.py"]
