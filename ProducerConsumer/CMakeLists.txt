@@ -49,6 +49,7 @@ set(COMMONSRC
 
 if(ENABLE_PRODUCER)
   add_executable(producer producer.cpp ${COMMONSRC})
+  target_link_libraries(producer stdc++fs)
 
   if(ENABLE_MPI)
     target_compile_definitions(producer PUBLIC ENABLE_MPI)

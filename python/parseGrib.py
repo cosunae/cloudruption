@@ -1,6 +1,7 @@
 import re
 import argparse
 import sys
+import pathlib
 
 
 class _RegExLib:
@@ -38,7 +39,9 @@ class typeOfLevelRegex:
 
 
 def parseTypeLevel():
-    filename = "../resources/typeOfLevel.def"
+    cdir = pathlib.Path(__file__).parent.absolute()
+    filename = cdir / pathlib.Path("../resources/typeOfLevel.def")
+
     paramdict = {}
     with open(filename, 'r') as file:
         line = next(file)
@@ -54,7 +57,8 @@ def parseTypeLevel():
 
 def parseGrib():
     parseTypeLevel()
-    filename = "../resources/dictionary_cosmo.txt"
+    cdir = pathlib.Path(__file__).parent.absolute()
+    filename = cdir / pathlib.Path("../resources/dictionary_cosmo.txt")
     paramdict = {}
     with open(filename, 'r') as file:
         line = next(file)

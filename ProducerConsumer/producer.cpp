@@ -11,6 +11,8 @@
 #ifdef ENABLE_MPI
 #include <mpi.h>
 #endif
+#include <filesystem>
+#include <iostream>
 #include <netcdf.h>
 #include <numeric>
 #include <rdkafkacpp.h>
@@ -297,6 +299,8 @@ class FieldHandler {
   const int mpirank_, mpisize_;
   std::string filename_;
   long timestamp_;
+  std::string parseGribExe_;
+
   GridConf gridconf_;
   SubDomainConf subdomainconf_;
   std::optional<FieldDesc> globalFieldProp_;
@@ -311,9 +315,10 @@ class FieldHandler {
   field3d *fsubd_ = nullptr;
 
 public:
-  FieldHandler(int mpirank, int mpisize, std::string filename, long timestamp)
+  FieldHandler(int mpirank, int mpisize, std::string filename, long timestamp,
+               std::string parseGribExe)
       : mpirank_(mpirank), mpisize_(mpisize), filename_(filename),
-        timestamp_(timestamp) {
+        timestamp_(timestamp), parseGribExe_(parseGribExe) {
     // domain decomposition as
     // 0 1 2
     // 3 4 5
@@ -396,7 +401,7 @@ public:
                            long timeRangeIndicator) {
 
     std::string command =
-        std::string("python3 ../python/parseGrib.py --table2Version ") +
+        std::string("python3 " + parseGribExe_ + " --table2Version ") +
         std::to_string(table2Version) + " --indicatorOfParameter " +
         std::to_string(indicatorOfParameter) + " --indicatorOfTypeOfLevel " +
         std::string(indicatorOfTypeOfLevel) + " --typeOfLevel " +
@@ -415,6 +420,7 @@ public:
     }
     readres.close();
 
+    std::cout << "FOOOOOOOOOO " << command << " -> " << fieldname << std::endl;
     return fieldname;
   }
   void getFileMetadata() {
@@ -864,7 +870,7 @@ public:
   GribDecoder(int mpirank, int mpisize, std::string filename)
       : filename_(filename), mpirank_(mpirank), mpisize_(mpisize) {}
 
-  void decode(KafkaProducer const &producer) {
+  void decode(KafkaProducer const &producer, std::string parseGribExe) {
 
     FILE *in = NULL;
     int err = 0;
@@ -921,7 +927,8 @@ public:
     for (auto timestamp : vtimestamps) {
       std::cout << "[" << mpirank_ << "] Processing timestamp :" << timestamp
                 << std::endl;
-      FieldHandler fhandler(mpirank_, mpisize_, filename_, timestamp);
+      FieldHandler fhandler(mpirank_, mpisize_, filename_, timestamp,
+                            parseGribExe);
       fhandler.getFileMetadata();
       fhandler.getMessages();
       fhandler.produce(producer);
@@ -941,6 +948,22 @@ int main(int argc, char **argv) {
     config_filename = std::string(argv[1]);
   }
   Config config(config_filename);
+
+  if (!std::filesystem::exists(config.get<std::string>("parsegrib"))) {
+    throw std::runtime_error(
+        "parseGrib python file defined in config.json does not exists :" +
+        config.get<std::string>("parsegrib"));
+  }
+
+  if (config.has("lockfile")) {
+    if (std::filesystem::exists(config.get<std::string>("lockfile"))) {
+      throw std::runtime_error("lock file exists, can not acquire lock");
+    }
+    std::ofstream f(config.get<std::string>("lockfile"));
+    f << "lock";
+    f.close();
+  }
+
   auto topics = config.getTopics();
 #ifdef ENABLE_MPI
   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -949,12 +972,16 @@ int main(int argc, char **argv) {
   auto files = config.getFiles();
 
   for (auto file : files) {
-    KafkaProducer producer(config.getKafkaBroker());
+    KafkaProducer producer(config.get<std::string>("kafkabroker"));
 
     GribDecoder gribDecoder(myrank, mpisize, file);
-    gribDecoder.decode(producer);
+    gribDecoder.decode(producer, config.get<std::string>("parsegrib"));
   }
 #ifdef ENABLE_MPI
   MPI_Finalize();
 #endif
+
+  if (config.has("lockfile")) {
+    std::remove(config.get<std::string>("lockfile").c_str());
+  }
 }

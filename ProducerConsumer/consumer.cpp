@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
   Config config(config_filename);
 
   auto topics = config.getTopics();
-  std::string brokers = config.getKafkaBroker();
+  std::string brokers = config.get<std::string>("kafkabroker");
   /*
    * Create configuration objects
    */

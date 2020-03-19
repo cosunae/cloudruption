@@ -1,4 +1,5 @@
 {
+    "parsegrib": "../python/parseGrib.py",
     "kafkabroker": "localhost:9092",
     "files": [
         "/data/cosmo-7/laf2018020200"

@@ -5,24 +5,24 @@
 class Config {
 private:
   std::string jsonConfigFile_;
+  nlohmann::json config_;
 
 public:
-  Config(std::string configfile) : jsonConfigFile_(configfile) {}
-
-  std::vector<std::string> getTopics() {
-    nlohmann::json config;
+  Config(std::string configfile) : jsonConfigFile_(configfile) {
     std::ifstream fin(jsonConfigFile_);
     if (!fin.is_open()) {
       throw std::runtime_error("cannot to open config file " + jsonConfigFile_);
     }
-    fin >> config;
+    fin >> config_;
+  }
 
-    if (!config.count("topics")) {
+  std::vector<std::string> getTopics() {
+    if (!config_.count("topics")) {
       throw std::runtime_error("topics not found in config");
     }
     std::vector<std::string> topics;
 
-    auto topics_cfg = config["topics"];
+    auto topics_cfg = config_["topics"];
     std::cout << "Subscribing to topics :" << std::endl;
     for (auto topic : topics_cfg) {
       auto val = topic.get<std::string>();
@@ -32,35 +32,23 @@ public:
     return topics;
   }
 
-  std::string getKafkaBroker() {
-    nlohmann::json config;
-    std::ifstream fin(jsonConfigFile_);
-    if (!fin.is_open()) {
-      throw std::runtime_error("cannot to open config file " + jsonConfigFile_);
+  template <typename T> T get(std::string key) {
+    if (!config_.count(key)) {
+      throw std::runtime_error(key + " not found in config");
     }
-    fin >> config;
-
-    if (!config.count("kafkabroker")) {
-      throw std::runtime_error("kafkabroker not found in config");
-    }
-    std::string result = config["kafkabroker"].get<std::string>();
+    T result = config_[key].get<T>();
     return result;
   }
 
-  std::vector<std::string> getFiles() {
-    nlohmann::json config;
-    std::ifstream fin(jsonConfigFile_);
-    if (!fin.is_open()) {
-      throw std::runtime_error("cannot to open config file " + jsonConfigFile_);
-    }
-    fin >> config;
+  bool has(std::string key) { return config_.count(key); }
 
-    if (!config.count("files")) {
+  std::vector<std::string> getFiles() {
+    if (!config_.count("files")) {
       throw std::runtime_error("files not found in config");
     }
     std::vector<std::string> files;
 
-    auto files_cfg = config["files"];
+    auto files_cfg = config_["files"];
     std::cout << "Producing files :" << std::endl;
     for (auto file : files_cfg) {
       auto val = file.get<std::string>();
