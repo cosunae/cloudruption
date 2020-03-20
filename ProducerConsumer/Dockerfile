@@ -1,13 +1,12 @@
 FROM ubuntu:18.04
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-   libopenmpi-dev git libgcc-8-dev ssh  ca-certificates 
-
-RUN apt-get update && apt-get install -y --no-install-recommends make g++-8 tar wget \
-    python3.7-dev python3-distutils libnetcdf-dev librdkafka-dev librdkafka1 librdkafka++1 \
-    openssl libssl-dev
-
 RUN apt-get purge cmake
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libopenmpi-dev git libgcc-8-dev ssh  ca-certificates \
+    make g++-8 tar wget \
+    python3.7-dev python3-distutils libnetcdf-dev librdkafka-dev librdkafka1 librdkafka++1 \
+    openssl libssl-dev curl unzip python3-pip python3-setuptools
+
 RUN mkdir ~/temp && cd ~/temp && \
     wget https://github.com/Kitware/CMake/releases/download/v3.16.5/cmake-3.16.5.tar.gz && \
     tar -xzvf cmake-3.16.5.tar.gz && \
@@ -25,16 +24,17 @@ RUN wget https://github.com/ecmwf/eccodes/archive/2.12.0.tar.gz && \
     /home/ecbuild-3.1.0/bin/ecbuild ../ -DENABLE_FORTRAN=OFF -DCMAKE_INSTALL_PREFIX=/usr/share/eccodes && \
     make -j4 install 
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl unzip
-
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install
 
 RUN git clone https://github.com/cosunae/cloudruption.git && \
-     cd  cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && \
+     cd cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && \
      mkdir build  && cd build &&  cmake  -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
     make -j3 
+
+RUN pip3 install wheel dash pandas squarify boto3 anytree confluent_kafka
+
 RUN mkdir /home/cloudruption/config    
 RUN mkdir /data
 ADD aws/entrypoint.py /home/cloudruption/ProducerConsumer/aws/entrypoint.py
