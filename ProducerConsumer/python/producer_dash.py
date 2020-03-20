@@ -56,6 +56,22 @@ def insertTree(rootNode, path):
 
 def create_treemap():
 
+    # plotly colorscales
+    # One of the following named colorscales:
+    #         ['aggrnyl', 'agsunset', 'algae', 'amp', 'armyrose', 'balance',
+    #          'blackbody', 'bluered', 'blues', 'blugrn', 'bluyl', 'brbg',
+    #          'brwnyl', 'bugn', 'bupu', 'burg', 'burgyl', 'cividis', 'curl',
+    #          'darkmint', 'deep', 'delta', 'dense', 'earth', 'edge', 'electric',
+    #          'emrld', 'fall', 'geyser', 'gnbu', 'gray', 'greens', 'greys',
+    #          'haline', 'hot', 'hsv', 'ice', 'icefire', 'inferno', 'jet',
+    #          'magenta', 'magma', 'matter', 'mint', 'mrybm', 'mygbm', 'oranges',
+    #          'orrd', 'oryel', 'peach', 'phase', 'picnic', 'pinkyl', 'piyg',
+    #          'plasma', 'plotly3', 'portland', 'prgn', 'pubu', 'pubugn', 'puor',
+    #          'purd', 'purp', 'purples', 'purpor', 'rainbow', 'rdbu', 'rdgy',
+    #          'rdpu', 'rdylbu', 'rdylgn', 'redor', 'reds', 'solar', 'spectral',
+    #          'speed', 'sunset', 'sunsetdark', 'teal', 'tealgrn', 'tealrose',
+    #          'tempo', 'temps', 'thermal', 'tropic', 'turbid', 'twilight',
+    #          'viridis', 'ylgn', 'ylgnbu', 'ylorbr', 'ylorrd']
     client = boto3.client('s3')
     buckets = client.list_buckets()['Buckets']
     root = Node("buckets")
@@ -73,9 +89,23 @@ def create_treemap():
     figure = go.Figure(go.Treemap(
         labels=names,
         parents=parents,
+        # bupu pubugn
+        # https://community.plot.ly/t/what-colorscales-are-available-in-plotly-and-which-are-the-default/2079
+        marker=dict(colorscale='tempo'),
         tiling={"squarifyratio": 4})
     )
-    figure.update_layout(uniformtext=dict(minsize=13, mode='show'))
+#    data = dict(character=names, parent=parents)
+#    figure = go.Figure()
+
+#    figure.add_trace(go.Sunburst(
+#        labels=names,
+#        parents=parents,
+#        domain=dict(column=1),
+#        marker=dict(colorscale='Electric'),
+#        insidetextorientation='radial'))
+
+    figure.update_layout(uniformtext=dict(
+        minsize=8, mode='show'), margin=dict(t=10, l=0, r=0, b=10))
     return figure
 
 
