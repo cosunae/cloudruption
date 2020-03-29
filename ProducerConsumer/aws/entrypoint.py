@@ -5,6 +5,9 @@ import os.path as path
 from pathlib import Path
 import json
 
+
+os.system('ls /creds')
+print("KKK ", os.environ.get('aws_access_key_id'))
 if os.environ.get('aws_access_key_id') and os.environ.get('aws_secret_access_key'):
     home = str(Path.home())
     aws = home+"/.aws"
@@ -20,7 +23,7 @@ if os.environ.get('aws_access_key_id') and os.environ.get('aws_secret_access_key
 
     f.close()
 
-json_configfile = '/home/cloudruption/config/config.json'
+json_configfile = '/home/cloudruption/ProducerConsumer/config.json'
 
 if os.environ.get('kafka_broker'):
     jfile = open(json_configfile, "r")

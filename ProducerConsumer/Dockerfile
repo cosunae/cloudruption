@@ -1,6 +1,5 @@
 FROM ubuntu:18.04
 
-RUN apt-get purge cmake
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenmpi-dev git libgcc-8-dev ssh  ca-certificates \
     make g++-8 tar wget \
@@ -29,8 +28,8 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
     ./aws/install
 
 RUN git clone https://github.com/cosunae/cloudruption.git && \
-     cd cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && \
-     mkdir build  && cd build &&  cmake  -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
+    cd cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && \
+    mkdir build  && cd build &&  cmake  -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
     make -j3 
 
 RUN pip3 install wheel dash pandas squarify boto3 anytree confluent_kafka
