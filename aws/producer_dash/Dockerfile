@@ -43,5 +43,5 @@ RUN mkdir /root/.aws/
 ADD credentials /root/.aws/credentials
 
 EXPOSE 3000
-ENTRYPOINT ["/home/cloudruption/aws/producer_dash/entrypoint.py"]
-#ENTRYPOINT ["/bin/bash"]
+#ENTRYPOINT ["/home/cloudruption/aws/producer_dash/entrypoint.py"]
+ENTRYPOINT ["/bin/bash"]
