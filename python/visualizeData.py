@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import time
 import struct
 import numpy as np
