@@ -13,7 +13,7 @@ RUN mkdir ~/temp && cd ~/temp && \
 
 RUN pip3 install wheel
 RUN pip3 install dash pandas squarify boto3 anytree confluent_kafka dash_treeview_antd sd_material_ui \
-    dataclasses matplotlib
+    dataclasses matplotlib netcdf4 pyyaml portion numba flask_caching filelock 
 
 WORKDIR /home/
 
@@ -37,8 +37,10 @@ RUN cd  /home/cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gc
     rm -rf build && mkdir build  && cd build &&  cmake  -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
     make -j3 && \
     export eccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ && \
-    cd /home/cloudruption/python && pip3 install .
- 
+    cd /home/cloudruption/ProducerConsumer && pip3 install .
+
+RUN pip3 install eccodes 
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/share/eccodes/lib/
 RUN mkdir /home/cloudruption/config    
 RUN mkdir /data
 #ADD aws/entrypoint.py /home/cloudruption/ProducerConsumer/aws/entrypoint.py
@@ -47,5 +49,5 @@ RUN mkdir /root/.aws/
 #ADD credentials /root/.aws/credentials
 
 EXPOSE 3001
-#ENTRYPOINT ["/home/cloudruption/python/visualizeData.py"]
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/home/cloudruption/python/visualizeData.py"]
+#ENTRYPOINT ["/bin/bash"]
