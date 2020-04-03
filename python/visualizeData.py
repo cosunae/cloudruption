@@ -3,7 +3,6 @@ import time
 import struct
 import numpy as np
 import string
-import matplotlib.pyplot as plt
 import argparse
 import time
 import dataregistry as dreg
@@ -12,7 +11,6 @@ from confluent_kafka import Consumer, KafkaError
 from typing import List
 import math
 import fieldop
-from kafka import KafkaConsumer
 # from singleton import sss
 import data
 import grid_operator as go
