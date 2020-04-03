@@ -12,7 +12,7 @@ RUN mkdir ~/temp && cd ~/temp && \
     cd cmake-3.16.5/ && export CC=gcc-8 && export  CXX=g++-8 && ./bootstrap && make -j4 && make install
 
 RUN pip3 install wheel
-RUN pip3 install dash pandas squarify boto3 anytree confluent_kafka
+RUN pip3 install dash pandas squarify boto3 anytree confluent_kafka dash_treeview_antd sd_material_ui
 
 WORKDIR /home/
 
@@ -29,8 +29,9 @@ RUN wget https://github.com/ecmwf/eccodes/archive/2.12.0.tar.gz && \
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install
-
-RUN  git clone https://github.com/cosunae/cloudruption.git 
+#invalidate the cache when the head of the repo changes
+ADD https://api.github.com/repos/cosunae/cloudruption/git/refs/heads/master version.json
+RUN git clone https://github.com/cosunae/cloudruption.git 
 RUN cd  /home/cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && \
     rm -rf build && mkdir build  && cd build &&  cmake  -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
     make -j3 
@@ -43,5 +44,5 @@ RUN mkdir /root/.aws/
 ADD credentials /root/.aws/credentials
 
 EXPOSE 3000
-#ENTRYPOINT ["/home/cloudruption/aws/producer_dash/entrypoint.py"]
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/home/cloudruption/aws/producer_dash/entrypoint.py"]
+#ENTRYPOINT ["/bin/bash"]
