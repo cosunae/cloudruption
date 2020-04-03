@@ -40,7 +40,7 @@ RUN mkdir /data
 #ADD aws/entrypoint.py /home/cloudruption/ProducerConsumer/aws/entrypoint.py
 #RUN chmod +x /home/cloudruption/ProducerConsumer/aws/entrypoint.py
 RUN mkdir /root/.aws/
-ADD ~/.aws/credentials /root/.aws/credentials
+ADD credentials /root/.aws/credentials
 
 EXPOSE 3000
 ENTRYPOINT ["/home/cloudruption/aws/producer_dash/entrypoint.py"]
