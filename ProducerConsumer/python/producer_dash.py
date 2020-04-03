@@ -19,7 +19,6 @@ import uuid
 import re
 from dash.exceptions import PreventUpdate
 from enum import Enum
-from flask import Flask
 import dash_treeview_antd
 import sd_material_ui
 
@@ -292,44 +291,14 @@ if __name__ == '__main__':
             raise PreventUpdate
 
         isLeaf, path = composePath(treeFiles, selected)
-        print("INL")
         if isLeaf:
-            print("JJJJ", kafka_broker)
             error = launchProducer(kafka_broker, path)
 
             if error == Error.NO_ERROR:
-                print("IM RETU")
                 return "Produced: "+path, True, "Produced: "+path,
-            print("INP", "Status: "+ErrorToString[error])
             return "Status: "+ErrorToString[error], True, "Status: "+ErrorToString[error],
         else:
-            print("INC")
             raise PreventUpdate
-#    @app.callback(
-#        Output('launching-producer-text-display', 'children'),
-#        [Input('treemap', 'clickData')], [State("input_kafka_broker", "value"), State('treemap', 'figure')])
-#    def treemap(clickData, kafka_broker, figure):
-#        if clickData is None:
-#            raise PreventUpdate
-
-        # data = clickData['points'][0]
-        #
-        # if not 'currentPath' in data:
-        #     raise PreventUpdate
-        #
-        # parents = figure['data'][0]['parents']
-        #
-        # # selected elemenent is not a leaf (i.e. file) or we dont have a kafka broker specified
-        # if data['label'] in parents or kafka_broker is None:
-        #     raise PreventUpdate
-        #
-        # filename = data['currentPath']+'/'+data['label']
-        # error = launchProducer(kafka_broker, filename)
-        #
-        # if error == Error.NO_ERROR:
-        #     return "Produced: "+filename
-        # return "Status: "+ErrorToString[error]
-
     @app.callback(Output('topics-table', 'data'),
                   [Input('interval-component', 'n_intervals')],
                   [State('input_kafka_broker', 'value')]

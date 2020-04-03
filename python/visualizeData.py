@@ -275,10 +275,8 @@ if __name__ == '__main__':
         global listCompletedFields
 
         if active_cell:
-            print("TIIIIIIIIIIIIIIIIIIIIIIIIIII", timestamp_index, len(listCompletedFields))
             timestamp = listCompletedFields[timestamp_index]["timestamp"]
             listFields = listCompletedFields[timestamp_index]["fields"]
-            print("ooooooooooooooo", listFields)
             idx = active_cell["row"] + page_current*page_size
             # we are on a page beyond the number of fields
             if idx >= len(listFields):
@@ -296,9 +294,6 @@ if __name__ == '__main__':
             #In that case the fieldname returned by getFieldnameFromList is None
             if fieldname is None:
                 raise PreventUpdate
-
-            print("acc", timestamp, fieldname, timestamp in datapool.data_)
-            print("acc2", fieldname in datapool[timestamp])
 
             field = datapool[timestamp][fieldname].data_
             fieldarr = np.array(field, copy=False)
