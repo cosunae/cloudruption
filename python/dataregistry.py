@@ -22,7 +22,6 @@ import os.path
 import datarequest as dreq
 import bisect
 
-
 class ActionType(IntEnum):
     HeaderData = 0
     Data = 1
@@ -98,7 +97,7 @@ class DataRegistry:
 
     def complete(self):
         for groupId, group in enumerate(self.groupRequests_):
-            print("check completeness of group", groupId, )
+            #print("check completeness of group", groupId, )
             reqHandle = self.completeg(groupId)
             if reqHandle:
                 return reqHandle
@@ -133,6 +132,8 @@ class DataRegistry:
                     groupRequest.timeDataRequests_.keys())[0]), datapool)
 
     def gatherField(self, requestHandle: RequestHandle, datapool: data.DataPool):
+        if self.completegt(requestHandle.groupId_, requestHandle.timestamp_) is None:
+            return
         datareqs = self.groupRequests_[
             requestHandle.groupId_].timeDataRequests_[requestHandle.timestamp_]
 
@@ -160,8 +161,9 @@ class DataRegistry:
     def cleanTimestamp(self, requestHandle):
         print("Deleting timestamp ", requestHandle.groupId_,
               requestHandle.timestamp_)
-        del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[
-            requestHandle.timestamp_]
+        if requestHandle.timestamp_ in self.groupRequests_[requestHandle.groupId_].timeDataRequests_:
+            del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[
+                requestHandle.timestamp_]
 
     def setRegisterAll(self):
         self.registerAll_ = True
@@ -228,9 +230,9 @@ def get_key(msg):
 
 
 class DataRegistryStreaming(DataRegistry):
-    def __init__(self, group="group1"):
+    def __init__(self, broker='localhost:9092', group="group1"):
         self.c_ = Consumer({
-            'bootstrap.servers': 'localhost:9092',
+            'bootstrap.servers': broker,
             'group.id': group,
             'auto.offset.reset': 'earliest',
             #            # ''

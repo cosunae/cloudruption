@@ -19,13 +19,15 @@ import uuid
 import re
 from dash.exceptions import PreventUpdate
 from enum import Enum
+from flask import Flask
+import dash_treeview_antd
+import sd_material_ui
 
 app = dash.Dash()
 producer = None
 producerConfig = None
 pgrib = None
-
-
+treeFiles = None
 class Error(Enum):
     NO_ERROR = 1
     NO_VALID_BROKER = 2
@@ -37,7 +39,6 @@ ErrorToString = {
     Error.NO_VALID_BROKER: "url is not a valid kafka broker",
     Error.CAN_NOT_GET_LOCK: "could not acquire a lock for the producer"
 }
-
 
 def insertTree(rootNode, path):
     if not path:
@@ -53,61 +54,44 @@ def insertTree(rootNode, path):
     if len(path) > 1:
         insertTree(nextNode, path[1:])
 
+def getTreeDict(node, idx):
+    return {'title' : node.name,
+            'key': ','.join([str(x) for x in idx]),
+            'children': [getTreeDict(x, idx + [ind]) for ind,x in enumerate(node.children)]}
 
-def create_treemap():
-
-    # plotly colorscales
-    # One of the following named colorscales:
-    #         ['aggrnyl', 'agsunset', 'algae', 'amp', 'armyrose', 'balance',
-    #          'blackbody', 'bluered', 'blues', 'blugrn', 'bluyl', 'brbg',
-    #          'brwnyl', 'bugn', 'bupu', 'burg', 'burgyl', 'cividis', 'curl',
-    #          'darkmint', 'deep', 'delta', 'dense', 'earth', 'edge', 'electric',
-    #          'emrld', 'fall', 'geyser', 'gnbu', 'gray', 'greens', 'greys',
-    #          'haline', 'hot', 'hsv', 'ice', 'icefire', 'inferno', 'jet',
-    #          'magenta', 'magma', 'matter', 'mint', 'mrybm', 'mygbm', 'oranges',
-    #          'orrd', 'oryel', 'peach', 'phase', 'picnic', 'pinkyl', 'piyg',
-    #          'plasma', 'plotly3', 'portland', 'prgn', 'pubu', 'pubugn', 'puor',
-    #          'purd', 'purp', 'purples', 'purpor', 'rainbow', 'rdbu', 'rdgy',
-    #          'rdpu', 'rdylbu', 'rdylgn', 'redor', 'reds', 'solar', 'spectral',
-    #          'speed', 'sunset', 'sunsetdark', 'teal', 'tealgrn', 'tealrose',
-    #          'tempo', 'temps', 'thermal', 'tropic', 'turbid', 'twilight',
-    #          'viridis', 'ylgn', 'ylgnbu', 'ylorbr', 'ylorrd']
+def create_filelist_tree():
     client = boto3.client('s3')
     buckets = client.list_buckets()['Buckets']
     root = Node("buckets")
 
     for bucket in [x['Name'] for x in buckets]:
         b = Node(bucket, parent=root)
+        if 'Contents' not in client.list_objects(Bucket=bucket):
+          continue
         for obj in client.list_objects(Bucket=bucket)['Contents']:
             path = obj['Key'].split('/')
             insertTree(b, path)
+    return root
 
-    names = [node.name for node in PreOrderIter(root)]
-    parents = [
-        node.parent.name if node.parent else "" for node in PreOrderIter(root)]
 
-    figure = go.Figure(go.Treemap(
-        labels=names,
-        parents=parents,
-        # bupu pubugn
-        # https://community.plot.ly/t/what-colorscales-are-available-in-plotly-and-which-are-the-default/2079
-        marker=dict(colorscale='tempo'),
-        tiling={"squarifyratio": 4})
-    )
-#    data = dict(character=names, parent=parents)
-#    figure = go.Figure()
+def composePath_(node, idxs):
+    if not idxs:
+        return node.name
+    print("kk", idxs)
+    thisIdx = idxs.pop(0)
+    return node.name + '/' + composePath_(node.children[int(thisIdx)], idxs)
 
-#    figure.add_trace(go.Sunburst(
-#        labels=names,
-#        parents=parents,
-#        domain=dict(column=1),
-#        marker=dict(colorscale='Electric'),
-#        insidetextorientation='radial'))
+def isLeaf(node, idxs):
+    if not idxs:
+        return not bool(node.children)
+    thisIdx = idxs.pop(0)
+    return isLeaf(node.children[int(thisIdx)], idxs)
 
-    figure.update_layout(uniformtext=dict(
-        minsize=8, mode='show'), margin=dict(t=10, l=0, r=0, b=10))
-    return figure
-
+def composePath(treeFiles, selected):
+    if len(selected) > 1:
+        raise RuntimeError("More than one file selected not supported")
+    idxs = selected[0].split(',')
+    return isLeaf(treeFiles, list(idxs)), composePath_(treeFiles, list(idxs))
 
 def get_topics(kafka_broker):
     c_ = Consumer({
@@ -192,7 +176,7 @@ def delete_kafka_topics(kafka_broker, topic_regex):
     if not topics:
         return []
 
-    fs = kba.delete_topics(topics, operation_timeout=30)
+    fs = kba.delete_topics(topics)
 
     # Wait for operation to finish.
     for topic, f in fs.items():
@@ -207,7 +191,6 @@ def delete_kafka_topics(kafka_broker, topic_regex):
 
 if __name__ == '__main__':
 
-    os.system('ls /creds')
     parser = argparse.ArgumentParser(prog='test.py')
     parser.add_argument(
         '--producer', help='path to producer executable', required=True)
@@ -217,6 +200,9 @@ if __name__ == '__main__':
         '--pgrib', help='path to parseGrib executable', required=True)
 
     args = parser.parse_args()
+
+    treeFiles = create_filelist_tree()
+    treeFilesDict = getTreeDict(treeFiles,[])
 
     producer = args.producer
     producerConfig = args.config
@@ -242,13 +228,23 @@ if __name__ == '__main__':
                     ),
                     html.Button(id='submit-buttom',
                                 n_clicks=0, children='Submit'),
-                    html.Div(id='deleting-text')
                 ]),
+                sd_material_ui.Snackbar(id='snackbar-deltopic', open=False, message='')
             ]),
             html.Div([
-                dcc.Graph(id='treemap', figure=create_treemap()),
+                dash_treeview_antd.TreeView(
+                    id='filelist',
+                    multiple=False,
+                    checkable=False,
+                    checked=[],
+                    selected=[],
+                    expanded=['0'],
+                    data=treeFilesDict
+                ),
+                #dcc.Graph(id='treemap', figure=create_treemap()),
                 html.Div(id='launching-producer-text-display')
-            ])
+            ]),
+            sd_material_ui.Snackbar(id='snackbar', open=False, message='')
         ], className="pretty_container eight columns"),
         html.Div([
             dash_table.DataTable(
@@ -269,15 +265,18 @@ if __name__ == '__main__':
                 n_intervals=0
             )
         ], className="pretty_container two columns")
+
     ])
 
-    @app.callback(Output('deleting-text', 'children'), [Input('submit-buttom', 'n_clicks')], [State('delete_topics', 'value'), State("input_kafka_broker", "value")])
+    @app.callback([dash.dependencies.Output('snackbar-deltopic', 'open'),
+                   dash.dependencies.Output('snackbar-deltopic', 'message')],[Input('submit-buttom', 'n_clicks')], [State('delete_topics', 'value'), State("input_kafka_broker", "value")])
     def delete_topics_cb(n_clicks, regex, kafka_broker):
         if regex is None:
             raise PreventUpdate
 
         topics_to_be_deleted = delete_kafka_topics(kafka_broker, regex)
-        return "deleting topics: "+",".join(topics_to_be_deleted)
+        print("opopopo", "deleting topics: "+",".join(topics_to_be_deleted))
+        return True,"deleting topics: "+",".join(topics_to_be_deleted)
 
     @app.callback(Output('kafka_broker_title', 'children'), [Input('input_kafka_broker', 'value')])
     def update_kafka_broker_title(kafka_broker):
@@ -285,30 +284,51 @@ if __name__ == '__main__':
             raise PreventUpdate
         return "kafka broker: "+kafka_broker
 
-    @app.callback(
-        Output('launching-producer-text-display', 'children'),
-        [Input('treemap', 'clickData')], [State("input_kafka_broker", "value"), State('treemap', 'figure')])
-    def treemap(clickData, kafka_broker, figure):
-        if clickData is None:
+    @app.callback([Output('launching-producer-text-display', 'children'), dash.dependencies.Output('snackbar', 'open'),
+                   dash.dependencies.Output('snackbar', 'message')],
+        [Input('filelist','selected')], [State('input_kafka_broker', 'value')])
+    def click_filelist(selected, kafka_broker):
+        if len(selected) != 1:
             raise PreventUpdate
 
-        data = clickData['points'][0]
+        isLeaf, path = composePath(treeFiles, selected)
+        print("INL")
+        if isLeaf:
+            print("JJJJ", kafka_broker)
+            error = launchProducer(kafka_broker, path)
 
-        if not 'currentPath' in data:
+            if error == Error.NO_ERROR:
+                print("IM RETU")
+                return "Produced: "+path, True, "Produced: "+path,
+            print("INP", "Status: "+ErrorToString[error])
+            return "Status: "+ErrorToString[error], True, "Status: "+ErrorToString[error],
+        else:
+            print("INC")
             raise PreventUpdate
+#    @app.callback(
+#        Output('launching-producer-text-display', 'children'),
+#        [Input('treemap', 'clickData')], [State("input_kafka_broker", "value"), State('treemap', 'figure')])
+#    def treemap(clickData, kafka_broker, figure):
+#        if clickData is None:
+#            raise PreventUpdate
 
-        parents = figure['data'][0]['parents']
-
-        # selected elemenent is not a leaf (i.e. file) or we dont have a kafka broker specified
-        if data['label'] in parents or kafka_broker is None:
-            raise PreventUpdate
-
-        filename = data['currentPath']+'/'+data['label']
-        error = launchProducer(kafka_broker, filename)
-
-        if error == Error.NO_ERROR:
-            return "Produced: "+filename
-        return "Status: "+ErrorToString[error]
+        # data = clickData['points'][0]
+        #
+        # if not 'currentPath' in data:
+        #     raise PreventUpdate
+        #
+        # parents = figure['data'][0]['parents']
+        #
+        # # selected elemenent is not a leaf (i.e. file) or we dont have a kafka broker specified
+        # if data['label'] in parents or kafka_broker is None:
+        #     raise PreventUpdate
+        #
+        # filename = data['currentPath']+'/'+data['label']
+        # error = launchProducer(kafka_broker, filename)
+        #
+        # if error == Error.NO_ERROR:
+        #     return "Produced: "+filename
+        # return "Status: "+ErrorToString[error]
 
     @app.callback(Output('topics-table', 'data'),
                   [Input('interval-component', 'n_intervals')],
@@ -321,4 +341,4 @@ if __name__ == '__main__':
 
         return [{"topics": x} for x in topics[1]]
 
-    app.run_server(debug=True)
+    app.run_server(debug=True, host='0.0.0.0', port=3000)

@@ -1,5 +1,4 @@
 default:
   fields:
     .*:
-      desc: 3d
-      region:
+      region: 3d

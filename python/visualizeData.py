@@ -21,7 +21,7 @@ import dash_table
 import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objects as go
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import json
 import uuid
 import plotly.graph_objects as go
@@ -30,12 +30,13 @@ from flask_caching import Cache
 import os
 from dataclasses import dataclass
 import itertools
+import sd_material_ui
+from dash.exceptions import PreventUpdate
+from filelock import FileLock
 
 processed = {}
 
-reg = dreg.DataRegistryStreaming("group1"+str(uuid.uuid1()))
-reg.loadData("visualizeData.yaml")
-
+reg = None
 
 @dataclass
 class fieldwrap:
@@ -50,13 +51,13 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    app = dash.Dash(__name__,  meta_tags=[
+        {"name": "viewport", "content": "width=device-width"}])
+
     # structure of type
     # [ {"timestamp": 1583230879, "fields": [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]}]
     listCompletedFields = []
     datapool = data.DataPool()
-
-    app = dash.Dash(__name__,  meta_tags=[
-        {"name": "viewport", "content": "width=device-width"}])
 
     CACHE_CONFIG = {
         # try 'filesystem' if you don't want to setup redis
@@ -71,6 +72,20 @@ if __name__ == '__main__':
 
     app.layout = html.Div([
         html.Div([
+            html.Div(id="kafka_title", children="kafka broker"),
+            html.Div([
+                html.Div([
+                    dcc.Input(
+                        id="input_kafka_broker".format("text"),
+                        type="text",
+                        placeholder="kafka broker".format("text"),
+                    ),
+                    html.Button(id='kafka-submit-buttom',
+                                n_clicks=0, children='Submit'),
+                    html.Div(id="kafka_broker_title"),
+                ], className="bare_container"),
+                sd_material_ui.Snackbar(id='snackbar-kafka', open=False, message='')
+            ]),
             html.Label('timestamp'),
             dcc.Slider(
                 id='timestamp-slider',
@@ -208,11 +223,33 @@ if __name__ == '__main__':
 
         return computeOutput(tCompletedFields)
 
+    @app.callback([dash.dependencies.Output('snackbar-kafka', 'open'),
+                   dash.dependencies.Output('snackbar-kafka', 'message'), dash.dependencies.Output('kafka_broker_title','children')],
+                  [Input('kafka-submit-buttom', 'n_clicks')],
+                  [State("input_kafka_broker", "value")])
+    def update_kafka_broker(n_clicks, kafka_broker):
+        global reg
+        if n_clicks == 0:
+            raise PreventUpdate
+        if not kafka_broker:
+            return True, "Error: kafka broker not set",""
+
+        reg = dreg.DataRegistryStreaming(broker=kafka_broker, group="group1" + str(uuid.uuid1()))
+        reg.loadData("visualizeData.yaml")
+
+        return True,"Setting kafka broker: "+kafka_broker,"kafka broker: "+kafka_broker
+
     @app.callback([Output('mytable', 'data'), Output('timestamp-slider', "min"),
                    Output('timestamp-slider', "max"), Output('timestamp-slider', "marks")],
                   [Input('interval-component', 'n_intervals'), Input('timestamp-slider', "value")])
     def receive_data(n, timestamp_index):
-        return processCompletedFields(n, timestamp_index)
+        if not reg:
+            raise PreventUpdate
+
+        filename = "___lockfile." + str(timestamp_index) + '.lock'
+        with FileLock(filename):
+            data,min,max,slmarks = processCompletedFields(n, timestamp_index)
+        return data,min,max,slmarks
 
     def getFieldnameFromList(fieldIs2d, listFields, elementid):
         # listFields in format [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]
@@ -223,6 +260,8 @@ if __name__ == '__main__':
             if cnt == elementid:
                 return f.name
             cnt += 1
+
+        return None
 
     @app.callback(
         [Output('selected-letter', 'children'),
@@ -236,7 +275,7 @@ if __name__ == '__main__':
         global listCompletedFields
 
         if active_cell:
-            print("TIIIIIIIIIIIIIIIIIIIIIIIIIII", timestamp_index)
+            print("TIIIIIIIIIIIIIIIIIIIIIIIIIII", timestamp_index, len(listCompletedFields))
             timestamp = listCompletedFields[timestamp_index]["timestamp"]
             listFields = listCompletedFields[timestamp_index]["fields"]
             print("ooooooooooooooo", listFields)
@@ -251,6 +290,15 @@ if __name__ == '__main__':
 
             fieldname = getFieldnameFromList(
                 fieldIs2d, listFields, active_cell["row"] + page_current*page_size)
+
+            #In case the input that trigger the callback is not the table selection, but the timestamp-slider
+            #it can happen that the cell selected is pointing to an out of range in the new timestamp-slider
+            #In that case the fieldname returned by getFieldnameFromList is None
+            if fieldname is None:
+                raise PreventUpdate
+
+            print("acc", timestamp, fieldname, timestamp in datapool.data_)
+            print("acc2", fieldname in datapool[timestamp])
 
             field = datapool[timestamp][fieldname].data_
             fieldarr = np.array(field, copy=False)
