@@ -145,7 +145,10 @@ public:
       exit(1);
     }
 
-    conf_->set("event_cb", &ex_event_cb_, errstr);
+    if (conf_->set("event_cb", &ex_event_cb_, errstr) != RdKafka::Conf::CONF_OK) {
+      std::cerr << errstr << std::endl;
+      exit(1);
+    }
 
     //    if (conf_->set("group.id", "group1", errstr) !=
     //    RdKafka::Conf::CONF_OK) {
@@ -164,8 +167,16 @@ public:
     //  std::cout << std::endl;
 
     /* Set delivery report callback */
-    conf_->set("dr_cb", &ex_dr_cb_, errstr);
-    conf_->set("security.protocol","ssl");
+    if (conf_->set("dr_cb", &ex_dr_cb_, errstr)  != RdKafka::Conf::CONF_OK) {
+      std::cerr << errstr << std::endl;
+      exit(1);
+    }
+
+    if (conf_->set("security.protocol","ssl", errstr) != RdKafka::Conf::CONF_OK) {
+      std::cerr << errstr << std::endl;
+      exit(1);
+    }
+
 
     /*
      * Create producer using accumulated global configuration.
