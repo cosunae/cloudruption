@@ -232,7 +232,8 @@ if __name__ == '__main__':
             return True, "Error: kafka broker not set",""
 
         reg = dreg.DataRegistryStreaming(broker=kafka_broker, group="group1" + str(uuid.uuid1()))
-        reg.loadData("visualizeData.yaml")
+        cdir=os.path.dirname(os.path.realpath(__file__))
+        reg.loadData(cdir+"/visualizeData.yaml")
 
         return True,"Setting kafka broker: "+kafka_broker,"kafka broker: "+kafka_broker
 
