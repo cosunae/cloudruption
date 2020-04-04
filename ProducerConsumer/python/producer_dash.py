@@ -97,6 +97,7 @@ def get_topics(kafka_broker):
         'bootstrap.servers': kafka_broker,
         'group.id': "group"+str(uuid.uuid1()),
         'auto.offset.reset': 'earliest',
+        'security.protocol': 'SSL'
     })
 
     try:

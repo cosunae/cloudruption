@@ -7,7 +7,6 @@ import argparse
 import time
 import dataregistry as dreg
 from numba import jit
-from confluent_kafka import Consumer, KafkaError
 from typing import List
 import math
 import fieldop

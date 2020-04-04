@@ -165,6 +165,7 @@ public:
 
     /* Set delivery report callback */
     conf_->set("dr_cb", &ex_dr_cb_, errstr);
+    conf_->set("security.protocol","ssl");
 
     /*
      * Create producer using accumulated global configuration.

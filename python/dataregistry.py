@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import parseGrib
 from confluent_kafka import Consumer, KafkaError
-# from kafka import KafkaConsumer
 from dataclasses import dataclass
 from netCDF4 import Dataset
 from values import undef
@@ -235,11 +234,8 @@ class DataRegistryStreaming(DataRegistry):
             'bootstrap.servers': broker,
             'group.id': group,
             'auto.offset.reset': 'earliest',
-            #            # ''
-            #            'debug': "consumer"
+            'security.protocol': 'SSL'
         })
-        # self.c_ = KafkaConsumer(bootstrap_servers='localhost:9092',
-        #                        group_id=group)
         DataRegistry.__init__(self)
 
     def __del__(self):
