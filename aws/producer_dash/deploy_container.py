@@ -16,7 +16,7 @@ def list_tags():
   pass
 
 def tag_image(tag):
-  out = subprocess.run(['docker', 'build','-q','../'],capture_output=True)
+  out = subprocess.run(['docker', 'build','-q','.'],capture_output=True)
   if out.returncode != 0:
     raise RuntimeError("docker build failed")
   

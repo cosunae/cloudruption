@@ -50,9 +50,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    app = dash.Dash(__name__,  meta_tags=[
-        {"name": "viewport", "content": "width=device-width"}])
-
+    app = dash.Dash()
+ 
     # structure of type
     # [ {"timestamp": 1583230879, "fields": [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]}]
     listCompletedFields = []
@@ -314,4 +313,4 @@ if __name__ == '__main__':
 
         return "", "", 0, {0: "0"}
 
-    app.run_server(debug=True, host="0.0.0.0", port=3001)
+    app.run_server(debug=True, host='0.0.0.0', port=3001)
