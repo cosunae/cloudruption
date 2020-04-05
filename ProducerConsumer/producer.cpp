@@ -272,7 +272,10 @@ public:
         0, NULL);
 
     if (resp != RdKafka::ERR_NO_ERROR) {
-      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) << std::endl;
+      std::cerr << "% Produce failed: topic [" << topic << "], partition ["
+                << partition_ << "], broker [" << broker_ << "], sizeof msg ["
+                << sizeof(KeyMessage) << "], error :" << RdKafka::err2str(resp)
+                << std::endl;
     } else {
       std::cout << "% Produced message (" << datasize << " bytes)" << std::endl;
     }

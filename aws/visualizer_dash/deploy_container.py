@@ -1,6 +1,7 @@
 #/usr/bin/python3.7
 import sys
 import boto3
+import json
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 7:
     print("This script requires Python version 3.7")
@@ -12,7 +13,7 @@ import argparse
 def list_tags():
   print("Listing AWS ECR images")
   client = boto3.client('ecr')
-  print(client.list_images(repositoryName="cr-visualizer"))
+  print(json.dumps(client.list_images(repositoryName="cr-visualizer"), sort_keys=True, indent=2))
   pass
 
 def tag_image(tag):
