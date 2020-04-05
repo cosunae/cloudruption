@@ -233,8 +233,7 @@ class DataRegistryStreaming(DataRegistry):
         self.c_ = Consumer({
             'bootstrap.servers': broker,
             'group.id': group,
-            'auto.offset.reset': 'earliest',
-            'security.protocol': 'SSL'
+            'auto.offset.reset': 'earliest'
         })
         DataRegistry.__init__(self)
 

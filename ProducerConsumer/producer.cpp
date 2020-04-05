@@ -172,12 +172,6 @@ public:
       exit(1);
     }
 
-    if (conf_->set("security.protocol","ssl", errstr) != RdKafka::Conf::CONF_OK) {
-      std::cerr << errstr << std::endl;
-      exit(1);
-    }
-
-
     /*
      * Create producer using accumulated global configuration.
      */
