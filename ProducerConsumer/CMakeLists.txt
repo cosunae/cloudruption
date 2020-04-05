@@ -48,6 +48,7 @@ set(COMMONSRC
     SinglePatch.h)
 
 if(ENABLE_PRODUCER)
+  find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
   add_executable(producer producer.cpp ${COMMONSRC})
   target_link_libraries(producer stdc++fs)
 
@@ -62,7 +63,7 @@ if(ENABLE_PRODUCER)
   target_link_libraries(producer ${RDKAFKA_LIBRARIES})
   target_link_libraries(producer ${MPI_CXX_LIBRARIES})
   target_link_libraries(producer eccodes)
- 
+  target_link_libraries(producer Python3::Python) 
 endif()
 
 add_executable(consumer consumer.cpp ${COMMONSRC})

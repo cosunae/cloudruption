@@ -150,7 +150,13 @@ def getGribFieldname(*, table2Version, indicatorOfParameter, indicatorOfTypeOfLe
 
     return None
 
+def getGribFieldname_c(table2Version, indicatorOfParameter, indicatorOfTypeOfLevel, typeOfLevel, timeRangeIndicator):
+    val = getGribFieldname(table2Version=table2Version, indicatorOfParameter=indicatorOfParameter,
+                           indicatorOfTypeOfLevel=indicatorOfTypeOfLevel, typeOfLevel=typeOfLevel, timeRangeIndicator=timeRangeIndicator)
 
+    if val:
+      return val
+    return "None"
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='parseGrib')
     parser.add_argument('--table2Version', required=True)

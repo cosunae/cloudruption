@@ -24,6 +24,10 @@
 
 #include "FieldProp.h"
 #include "Grid.h"
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 #if SIZE_MAX == UCHAR_MAX
 #define MPI_SIZE_T MPI_UNSIGNED_CHAR
@@ -145,7 +149,8 @@ public:
       exit(1);
     }
 
-    if (conf_->set("event_cb", &ex_event_cb_, errstr) != RdKafka::Conf::CONF_OK) {
+    if (conf_->set("event_cb", &ex_event_cb_, errstr) !=
+        RdKafka::Conf::CONF_OK) {
       std::cerr << errstr << std::endl;
       exit(1);
     }
@@ -167,7 +172,7 @@ public:
     //  std::cout << std::endl;
 
     /* Set delivery report callback */
-    if (conf_->set("dr_cb", &ex_dr_cb_, errstr)  != RdKafka::Conf::CONF_OK) {
+    if (conf_->set("dr_cb", &ex_dr_cb_, errstr) != RdKafka::Conf::CONF_OK) {
       std::cerr << errstr << std::endl;
       exit(1);
     }
@@ -406,28 +411,100 @@ public:
                            std::string indicatorOfTypeOfLevel, long typeOfLevel,
                            long timeRangeIndicator) {
 
-    std::string command =
-        std::string("python3 " + parseGribExe_ + " --table2Version ") +
-        std::to_string(table2Version) + " --indicatorOfParameter " +
-        std::to_string(indicatorOfParameter) + " --indicatorOfTypeOfLevel " +
-        std::string(indicatorOfTypeOfLevel) + " --typeOfLevel " +
-        std::to_string(typeOfLevel) + " --timeRangeIndicator " +
-        std::to_string(timeRangeIndicator) + " > ./fieldname.decod";
+    PyObject *pName, *pModule, *pFunc;
+    PyObject *pArgs, *pValue;
 
-    system(command.c_str());
-    std::string fieldname;
-    std::ifstream readres;
-    readres.open("fieldname.decod");
-    if (!readres) {
-      throw std::runtime_error(
-          "Can not read file with python output fieldname.decod");
-    }
-    while (readres >> fieldname) {
-    }
-    readres.close();
+    Py_Initialize();
 
-    std::cout << "FOOOOOOOOOO " << command << " -> " << fieldname << std::endl;
-    return fieldname;
+    std::string moduleName =
+        fs::path(fs::path(parseGribExe_).replace_extension("")).filename();
+    std::string modulePath = fs::path(parseGribExe_).parent_path();
+
+    PyObject *sys = PyImport_ImportModule("sys");
+    PyObject *path = PyObject_GetAttrString(sys, "path");
+    PyList_Append(path, PyUnicode_FromString(modulePath.c_str()));
+
+    pName = PyUnicode_DecodeFSDefault(moduleName.c_str());
+    /* Error checking of pName left out */
+
+    pModule = PyImport_Import(pName);
+    Py_DECREF(pName);
+    if (!pModule) {
+      PyErr_Print();
+      throw std::runtime_error("Failed to load");
+    }
+
+    pFunc = PyObject_GetAttrString(pModule, "getGribFieldname_c");
+    /* pFunc is a new reference */
+
+    if (!pFunc || !PyCallable_Check(pFunc)) {
+      if (PyErr_Occurred())
+        PyErr_Print();
+      throw std::runtime_error("Call Failed");
+    }
+
+    pArgs = PyTuple_New(5);
+    pValue = PyLong_FromLong(table2Version);
+    if (!pValue) {
+      Py_DECREF(pArgs);
+      Py_DECREF(pModule);
+      throw std::runtime_error("Cannot convert argument\n");
+    }
+    /* pValue reference stolen here: */
+    PyTuple_SetItem(pArgs, 0, pValue);
+
+    pValue = PyLong_FromLong(indicatorOfParameter);
+    if (!pValue) {
+      Py_DECREF(pArgs);
+      Py_DECREF(pModule);
+      throw std::runtime_error("Cannot convert argument\n");
+    }
+    /* pValue reference stolen here: */
+    PyTuple_SetItem(pArgs, 1, pValue);
+
+    pValue = PyUnicode_FromString(indicatorOfTypeOfLevel.c_str());
+    if (!pValue) {
+      Py_DECREF(pArgs);
+      Py_DECREF(pModule);
+      throw std::runtime_error("Cannot convert argument\n");
+    }
+    /* pValue reference stolen here: */
+    PyTuple_SetItem(pArgs, 2, pValue);
+
+    pValue = PyLong_FromLong(typeOfLevel);
+    if (!pValue) {
+      Py_DECREF(pArgs);
+      Py_DECREF(pModule);
+      throw std::runtime_error("Cannot convert argument\n");
+    }
+    /* pValue reference stolen here: */
+    PyTuple_SetItem(pArgs, 3, pValue);
+
+    pValue = PyLong_FromLong(timeRangeIndicator);
+    if (!pValue) {
+      Py_DECREF(pArgs);
+      Py_DECREF(pModule);
+      throw std::runtime_error("Cannot convert argument\n");
+    }
+    /* pValue reference stolen here: */
+    PyTuple_SetItem(pArgs, 4, pValue);
+
+    pValue = PyObject_CallObject(pFunc, pArgs);
+    if (!pValue) {
+      if (PyErr_Occurred())
+        PyErr_Print();
+      throw std::runtime_error("Error capturing python result");
+    }
+    std::string res = PyUnicode_AsUTF8(pValue);
+    Py_DECREF(pValue);
+    Py_XDECREF(pFunc);
+    Py_DECREF(pModule);
+
+    if (Py_FinalizeEx() < 0) {
+      throw std::runtime_error("Error closing python interpreter");
+    }
+
+    return res;
   }
   void getFileMetadata() {
     FILE *in = NULL;
