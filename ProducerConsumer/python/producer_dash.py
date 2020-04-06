@@ -27,17 +27,9 @@ producer = None
 producerConfig = None
 pgrib = None
 treeFiles = None
-class Error(Enum):
-    NO_ERROR = 1
-    NO_VALID_BROKER = 2
-    CAN_NOT_GET_LOCK = 3
 
-
-ErrorToString = {
-    Error.NO_ERROR: "Success",
-    Error.NO_VALID_BROKER: "url is not a valid kafka broker",
-    Error.CAN_NOT_GET_LOCK: "could not acquire a lock for the producer"
-}
+class NoValidKafkaBroker(Exception):
+    pass
 
 def insertTree(rootNode, path):
     if not path:
@@ -76,7 +68,6 @@ def create_filelist_tree():
 def composePath_(node, idxs):
     if not idxs:
         return node.name
-    print("kk", idxs)
     thisIdx = idxs.pop(0)
     return node.name + '/' + composePath_(node.children[int(thisIdx)], idxs)
 
@@ -102,17 +93,18 @@ def get_topics(kafka_broker):
     try:
         topics = c_.list_topics(timeout=2).topics
     except:
-        return [Error.NO_VALID_BROKER, []]
+        raise NoValidKafkaBroker("no valid broker: ", kafka_broker)
 
-    return [Error.NO_ERROR, topics]
+    return topics
 
 
 def launchProducer(kafka_broker, filename):
 
     filename = pathlib.Path(filename)
     filenameflat = pathlib.Path(str(filename).replace('/', "_"))
-    if get_topics(kafka_broker)[0] != Error.NO_ERROR:
-        return get_topics(kafka_broker)[0]
+
+    # test valid broker, it will throw in case of invalid broker
+    topics = get_topics(kafka_broker)
 
     cdir = pathlib.Path(__file__).parent.absolute()
     tmpdir = cdir / pathlib.Path('tmpdash___')
@@ -122,7 +114,7 @@ def launchProducer(kafka_broker, filename):
 
     # Can not acquire lock
     if pathlib.Path(lockf).exists():
-        return Error.CAN_NOT_GET_LOCK
+        raise Exception("Can not acquier lock to produce file, another process already running")
 
     fparts = str(filename).split('/')
     bucket = fparts[1]
@@ -145,16 +137,11 @@ def launchProducer(kafka_broker, filename):
     json.dump(jdata, jfile)
     jfile.close()
 
-    f = open("out.log", "w")
-    subprocess.call([producer, tconfig], stdout=f)
-
-    return Error.NO_ERROR
-
+    subprocess.run([producer , tconfig], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 def delete_kafka_topics(kafka_broker, topic_regex):
+    # test valid broker, it will throw in case of invalid broker
     registered_topics = get_topics(kafka_broker)
-    if registered_topics[0] != Error.NO_ERROR:
-        return registered_topics[0]
 
     kba = admin.AdminClient({'bootstrap.servers': kafka_broker})
 
@@ -179,11 +166,9 @@ def delete_kafka_topics(kafka_broker, topic_regex):
 
     # Wait for operation to finish.
     for topic, f in fs.items():
-        try:
-            f.result()  # The result itself is None
-            print("Topic {} deleted".format(topic))
-        except Exception as e:
-            print("Failed to delete topic {}: {}".format(topic, e))
+        # it will throw if topic can not be deleted
+        f.result()  # The result itself is None
+        print("Topic {} deleted".format(topic))
 
     return topics
 
@@ -273,8 +258,13 @@ if __name__ == '__main__':
         if regex is None:
             raise PreventUpdate
 
-        topics_to_be_deleted = delete_kafka_topics(kafka_broker, regex)
-        print("opopopo", "deleting topics: "+",".join(topics_to_be_deleted))
+        topics_to_be_deleted = None
+        try:
+            topics_to_be_deleted = delete_kafka_topics(kafka_broker, regex)
+        except Exception as ex:
+            print(ex)
+            raise PreventUpdate
+
         return True,"deleting topics: "+",".join(topics_to_be_deleted)
 
     @app.callback(Output('kafka_broker_title', 'children'), [Input('input_kafka_broker', 'value')])
@@ -292,11 +282,13 @@ if __name__ == '__main__':
 
         isLeaf, path = composePath(treeFiles, selected)
         if isLeaf:
-            error = launchProducer(kafka_broker, path)
+            try:
+                launchProducer(kafka_broker, path)
+            except Exception as ex:
+                print(ex)
+                return "Status: " + ex.__str__(), True, "Status: " + ex.__str__()
 
-            if error == Error.NO_ERROR:
-                return "Produced: "+path, True, "Produced: "+path,
-            return "Status: "+ErrorToString[error], True, "Status: "+ErrorToString[error],
+            return "Produced: "+path, True, "Produced: "+path,
         else:
             raise PreventUpdate
     @app.callback(Output('topics-table', 'data'),
@@ -304,10 +296,13 @@ if __name__ == '__main__':
                   [State('input_kafka_broker', 'value')]
                   )
     def update_list_topics(n_intervals, kafka_broker):
-        topics = get_topics(kafka_broker)
-        if topics[0] != Error.NO_ERROR:
+        topics = None
+        try:
+            topics = get_topics(kafka_broker)
+        except Exception as ex:
+            print(ex)
             raise PreventUpdate
 
-        return [{"topics": x} for x in topics[1]]
+        return [{"topics": x} for x in topics]
 
     app.run_server(debug=True, host='0.0.0.0', port=3000)
