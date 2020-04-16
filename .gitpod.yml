@@ -1,0 +1,8 @@
+tasks:
+  - init: 
+      echo "Replace me with a build script for the project."
+      cd ProucerConsumer
+      mkdir build && cd build
+      cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    command: echo "Replace me with something that should run on every start, or just
+      remove me entirely."
