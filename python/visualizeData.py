@@ -244,9 +244,13 @@ if __name__ == '__main__':
         if not reg:
             raise PreventUpdate
 
-        filename = "___lockfile." + str(timestamp_index) + '.lock'
-        with FileLock(filename):
-            data,min,max,slmarks = processCompletedFields(n, timestamp_index)
+        try:
+            filename = "___lockfile." + str(timestamp_index) + '.lock'
+            with FileLock(filename):
+                data,min,max,slmarks = processCompletedFields(n, timestamp_index)
+        except Exception as ex:
+            print("Error", ex)
+            raise PreventUpdate
         return data,min,max,slmarks
 
     def getFieldnameFromList(fieldIs2d, listFields, elementid):
