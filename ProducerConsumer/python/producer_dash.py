@@ -27,9 +27,12 @@ producer = None
 producerConfig = None
 pgrib = None
 treeFiles = None
+verbose = False
+
 
 class NoValidKafkaBroker(Exception):
     pass
+
 
 def insertTree(rootNode, path):
     if not path:
@@ -45,10 +48,12 @@ def insertTree(rootNode, path):
     if len(path) > 1:
         insertTree(nextNode, path[1:])
 
+
 def getTreeDict(node, idx):
-    return {'title' : node.name,
+    return {'title': node.name,
             'key': ','.join([str(x) for x in idx]),
-            'children': [getTreeDict(x, idx + [ind]) for ind,x in enumerate(node.children)]}
+            'children': [getTreeDict(x, idx + [ind]) for ind, x in enumerate(node.children)]}
+
 
 def create_filelist_tree():
     client = boto3.client('s3')
@@ -58,7 +63,7 @@ def create_filelist_tree():
     for bucket in [x['Name'] for x in buckets]:
         b = Node(bucket, parent=root)
         if 'Contents' not in client.list_objects(Bucket=bucket):
-          continue
+            continue
         for obj in client.list_objects(Bucket=bucket)['Contents']:
             path = obj['Key'].split('/')
             insertTree(b, path)
@@ -71,17 +76,20 @@ def composePath_(node, idxs):
     thisIdx = idxs.pop(0)
     return node.name + '/' + composePath_(node.children[int(thisIdx)], idxs)
 
+
 def isLeaf(node, idxs):
     if not idxs:
         return not bool(node.children)
     thisIdx = idxs.pop(0)
     return isLeaf(node.children[int(thisIdx)], idxs)
 
+
 def composePath(treeFiles, selected):
     if len(selected) > 1:
         raise RuntimeError("More than one file selected not supported")
     idxs = selected[0].split(',')
     return isLeaf(treeFiles, list(idxs)), composePath_(treeFiles, list(idxs))
+
 
 def get_topics(kafka_broker):
     c_ = Consumer({
@@ -114,7 +122,8 @@ def launchProducer(kafka_broker, filename):
 
     # Can not acquire lock
     if pathlib.Path(lockf).exists():
-        raise Exception("Can not acquier lock to produce file, another process already running")
+        raise Exception(
+            "Can not acquier lock to produce file, another process already running")
 
     fparts = str(filename).split('/')
     bucket = fparts[1]
@@ -137,7 +146,12 @@ def launchProducer(kafka_broker, filename):
     json.dump(jdata, jfile)
     jfile.close()
 
-    subprocess.run([producer , tconfig], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    res = subprocess.run([producer, tconfig], check=True,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if verbose:
+        print('stdout:', res.stdout)
+        print('stderr:', res.stderr)
+
 
 def delete_kafka_topics(kafka_broker, topic_regex):
     # test valid broker, it will throw in case of invalid broker
@@ -182,11 +196,16 @@ if __name__ == '__main__':
         '--config', help='path to producer config file template', required=True)
     parser.add_argument(
         '--pgrib', help='path to parseGrib executable', required=True)
+    parser.add_argument(
+        '-v', help='run in debug mode', action="store_true")
 
     args = parser.parse_args()
 
+    if args.v:
+        verbose = True
+
     treeFiles = create_filelist_tree()
-    treeFilesDict = getTreeDict(treeFiles,[])
+    treeFilesDict = getTreeDict(treeFiles, [])
 
     producer = args.producer
     producerConfig = args.config
@@ -213,7 +232,8 @@ if __name__ == '__main__':
                     html.Button(id='submit-buttom',
                                 n_clicks=0, children='Submit'),
                 ]),
-                sd_material_ui.Snackbar(id='snackbar-deltopic', open=False, message='')
+                sd_material_ui.Snackbar(
+                    id='snackbar-deltopic', open=False, message='')
             ]),
             html.Div([
                 dash_treeview_antd.TreeView(
@@ -253,7 +273,7 @@ if __name__ == '__main__':
     ])
 
     @app.callback([dash.dependencies.Output('snackbar-deltopic', 'open'),
-                   dash.dependencies.Output('snackbar-deltopic', 'message')],[Input('submit-buttom', 'n_clicks')], [State('delete_topics', 'value'), State("input_kafka_broker", "value")])
+                   dash.dependencies.Output('snackbar-deltopic', 'message')], [Input('submit-buttom', 'n_clicks')], [State('delete_topics', 'value'), State("input_kafka_broker", "value")])
     def delete_topics_cb(n_clicks, regex, kafka_broker):
         if regex is None:
             raise PreventUpdate
@@ -265,7 +285,7 @@ if __name__ == '__main__':
             print(ex)
             raise PreventUpdate
 
-        return True,"deleting topics: "+",".join(topics_to_be_deleted)
+        return True, "deleting topics: "+",".join(topics_to_be_deleted)
 
     @app.callback(Output('kafka_broker_title', 'children'), [Input('input_kafka_broker', 'value')])
     def update_kafka_broker_title(kafka_broker):
@@ -275,7 +295,7 @@ if __name__ == '__main__':
 
     @app.callback([Output('launching-producer-text-display', 'children'), dash.dependencies.Output('snackbar', 'open'),
                    dash.dependencies.Output('snackbar', 'message')],
-        [Input('filelist','selected')], [State('input_kafka_broker', 'value')])
+                  [Input('filelist', 'selected')], [State('input_kafka_broker', 'value')])
     def click_filelist(selected, kafka_broker):
         if len(selected) != 1:
             raise PreventUpdate
@@ -291,6 +311,7 @@ if __name__ == '__main__':
             return "Produced: "+path, True, "Produced: "+path,
         else:
             raise PreventUpdate
+
     @app.callback(Output('topics-table', 'data'),
                   [Input('interval-component', 'n_intervals')],
                   [State('input_kafka_broker', 'value')]

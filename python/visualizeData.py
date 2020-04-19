@@ -20,6 +20,7 @@ import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
+from confluent_kafka import Consumer
 import json
 import uuid
 import plotly.graph_objects as go
@@ -31,15 +32,17 @@ import itertools
 import sd_material_ui
 from dash.exceptions import PreventUpdate
 from filelock import FileLock
+import sd_material_ui
 
-processed = {}
-
-reg = None
 
 @dataclass
 class fieldwrap:
     name: str
     is2d: bool
+
+
+class NoValidKafkaBroker(Exception):
+    pass
 
 
 print("****************************************************")
@@ -50,11 +53,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     app = dash.Dash()
- 
-    # structure of type
-    # [ {"timestamp": 1583230879, "fields": [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]}]
-    listCompletedFields = []
-    datapool = data.DataPool()
 
     CACHE_CONFIG = {
         # try 'filesystem' if you don't want to setup redis
@@ -66,6 +64,12 @@ if __name__ == '__main__':
     }
     cache = Cache()
     cache.init_app(app.server, config=CACHE_CONFIG)
+
+    # structure of type
+    # [ {"timestamp": 1583230879, "fields": [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]}]
+    listCompletedFields = []
+    datapool = data.DataPool()
+    reg = None
 
     app.layout = html.Div([
         html.Div([
@@ -81,7 +85,8 @@ if __name__ == '__main__':
                                 n_clicks=0, children='Submit'),
                     html.Div(id="kafka_broker_title"),
                 ], className="bare_container"),
-                sd_material_ui.Snackbar(id='snackbar-kafka', open=False, message='')
+                sd_material_ui.Snackbar(
+                    id='snackbar-kafka', open=False, message='')
             ]),
             html.Label('timestamp'),
             dcc.Slider(
@@ -109,13 +114,12 @@ if __name__ == '__main__':
         ),
         html.Div([
             dash_table.DataTable(
-                id='mytable',
-                columns=[{"name": "2d fields", "id": "2d_field"},
-                         {"name": "3d fields", "id": "3d_field"}],
+                id='topics-table',
+                columns=[{"name": "kafka topics", "id": "topics"}],
                 data=[],
                 page_action='native',
                 page_current=0,
-                page_size=20,
+                page_size=10,
                 style_header={
                     'backgroundColor': 'rgb(230, 230, 230)',
                     'fontWeight': 'bold'
@@ -134,58 +138,82 @@ if __name__ == '__main__':
                     } for c in ['2d_field']
                 ]
             ),
-            # intermediate variable, will have style={'display': 'none'}
-            html.Div(id='selected-letter'),
+            sd_material_ui.Snackbar(
+                id='snackbar-selecttopic', open=False, message=''),
+            html.Div([dash_table.DataTable(
+                id='received-data',
+                columns=[{"name": "2d fields", "id": "2d_field"},
+                         {"name": "3d fields", "id": "3d_field"}],
+                data=[],
+                page_action='native',
+                page_current=0,
+                page_size=10,
+                style_header={
+                    'backgroundColor': 'rgb(230, 230, 230)',
+                    'fontWeight': 'bold'
+                },
+                style_data_conditional=[
+                    {
+                        'if': {'row_index': 'odd'},
+                        'backgroundColor': 'rgb(248, 248, 248)'
+                    }
+                ],
+                style_cell_conditional=[
+                    {
+                        'if': {'column_id': c},
+                        'textAlign': 'left',
+                        'else': 'right'
+                    } for c in ['2d_field']
+                ]
+            ), ], className="pretty_container six columns",),
             dcc.Interval(
                 id='interval-component',
                 interval=1*1000,  # in milliseconds
                 n_intervals=0
-            ), ],
+            ),
+            dcc.Interval(
+                id='interval-component-collect',
+                interval=4*1000,  # in milliseconds
+                n_intervals=0
+            ),
+            html.Div(id='dummy'),
+        ],
             className="pretty_container four columns",
         )
     ], className="row flex-display",)
 
-    def computeOutput(timestampfields):
+    def computeOutput(listCompletedFields):
         # timestampfields
         # [fieldwrap("name", is2d=True)]
+        fdict = []
         mint = 0
         maxt = len(listCompletedFields)-1
 
-        list2dFields = [x.name for x in timestampfields if x.is2d]
-        list3dFields = [x.name for x in timestampfields if not x.is2d]
+        for tlist in listCompletedFields:
+            timestamp = tlist["timestamp"]
+            timestampfields = tlist["fields"]
 
-        fdict = []
-        for f2, f3 in itertools.zip_longest(list2dFields, list3dFields):
-            elemdict = {}
-            if f2:
-                elemdict["2d_field"] = f2
-            if f3:
-                elemdict["3d_field"] = f3
+            list2dFields = [x.name for x in timestampfields if x.is2d]
+            list3dFields = [x.name for x in timestampfields if not x.is2d]
 
-            fdict.append(elemdict)
+            for f2, f3 in itertools.zip_longest(list2dFields, list3dFields):
+                elemdict = {}
+                if f2:
+                    elemdict["2d_field"] = f2
+                if f3:
+                    elemdict["3d_field"] = f3
 
-        print('GGGG', fdict)
+                fdict.append(elemdict)
+
         return [fdict, mint, maxt, {i: str(i) for i in range(0, len(listCompletedFields)-1)}]
 
-    @cache.memoize()
-    def processCompletedFields(n, timestamp_index):
+    def processCompletedFields():
         global listCompletedFields
-
-        if not listCompletedFields:
-            tCompletedFields = []
-        else:
-            tCompletedFields = listCompletedFields[timestamp_index]["fields"]
-
-        # the callback is called two times per trigger because of this
-        # https://github.com/plotly/dash-renderer/pull/54
-        if n in processed:
-            return computeOutput(tCompletedFields)
-        processed[n] = 1
-
         global reg
 
-        for i in range(30):
-            reg.poll(0.1)
+        for i in range(3):
+            reg.poll(0.5)
+
             reqHandle = reg.complete()
             if reqHandle:
                 timestamp = reqHandle.timestamp_
@@ -212,16 +240,10 @@ if __name__ == '__main__':
                     is2d = True if datadesc.levlen == 1 else False
                     if field not in [p.name for p in tCompletedFields]:
                         tCompletedFields.append(fieldwrap(field, is2d))
-
-        if not listCompletedFields:
-            tCompletedFields = []
-        else:
-            tCompletedFields = listCompletedFields[timestamp_index]["fields"]
-
-        return computeOutput(tCompletedFields)
+        return computeOutput(listCompletedFields)
 
     @app.callback([dash.dependencies.Output('snackbar-kafka', 'open'),
-                   dash.dependencies.Output('snackbar-kafka', 'message'), dash.dependencies.Output('kafka_broker_title','children')],
+                   dash.dependencies.Output('snackbar-kafka', 'message'), dash.dependencies.Output('kafka_broker_title', 'children')],
                   [Input('kafka-submit-buttom', 'n_clicks')],
                   [State("input_kafka_broker", "value")])
     def update_kafka_broker(n_clicks, kafka_broker):
@@ -229,29 +251,83 @@ if __name__ == '__main__':
         if n_clicks == 0:
             raise PreventUpdate
         if not kafka_broker:
-            return True, "Error: kafka broker not set",""
+            return True, "Error: kafka broker not set", ""
 
-        reg = dreg.DataRegistryStreaming(broker=kafka_broker, group="group1" + str(uuid.uuid1()))
-        cdir=os.path.dirname(os.path.realpath(__file__))
-        reg.loadData(cdir+"/visualizeData.yaml")
+        reg = dreg.DataRegistryStreaming(
+            broker=kafka_broker, group="group1" + str(uuid.uuid1()))
 
-        return True,"Setting kafka broker: "+kafka_broker,"kafka broker: "+kafka_broker
+        return True, "Setting kafka broker: "+kafka_broker, "kafka broker: "+kafka_broker
 
-    @app.callback([Output('mytable', 'data'), Output('timestamp-slider', "min"),
-                   Output('timestamp-slider', "max"), Output('timestamp-slider', "marks")],
-                  [Input('interval-component', 'n_intervals'), Input('timestamp-slider', "value")])
-    def receive_data(n, timestamp_index):
+    def get_topics(kafka_broker):
+        c_ = Consumer({
+            'bootstrap.servers': kafka_broker,
+            'group.id': "group"+str(uuid.uuid1()),
+            'auto.offset.reset': 'earliest'
+        })
+
+        try:
+            topics = c_.list_topics(timeout=2).topics
+        except:
+            raise NoValidKafkaBroker("no valid broker: ", kafka_broker)
+
+        return topics
+
+    @app.callback(Output('topics-table', 'data'),
+                  [Input('interval-component', 'n_intervals')],
+                  [State('input_kafka_broker', 'value'), State(
+                      'kafka-submit-buttom', 'n_clicks')]
+                  )
+    def update_list_topics(n_intervals, kafka_broker, n_clicks):
+        # kafka broker not set yet
+        if n_clicks == 0:
+            raise PreventUpdate
+        topics = None
+        try:
+            topics = get_topics(kafka_broker)
+        except Exception as ex:
+            print(ex)
+            raise PreventUpdate
+
+        return [{"topics": x} for x in topics]
+
+    @app.callback([Output('received-data', 'data')],
+                  [Input('interval-component', 'n_intervals')],
+                  [State('input_kafka_broker', 'value'), State(
+                      'kafka-submit-buttom', 'n_clicks')]
+                  )
+    def update_data_collected(n, kafka_broker, n_clicks):
+        global listCompletedFields
+        # kafka broker not set yet
+        if n_clicks == 0:
+            raise PreventUpdate
+
+        data, min, max, slmarks = computeOutput(listCompletedFields)
+
+        return [data]
+
+    @app.callback([Output('dummy', 'children')],
+                  [Input('interval-component-collect', 'n_intervals')],
+                  [State('input_kafka_broker', 'value'), State(
+                      'kafka-submit-buttom', 'n_clicks')]
+                  )
+    def update_received_data(n, kafka_broker, n_clicks):
+        # kafka broker not set yet
+        if n_clicks == 0:
+            raise PreventUpdate
+
         if not reg:
             raise PreventUpdate
 
         try:
-            filename = "___lockfile." + str(timestamp_index) + '.lock'
+            filename = "___lockfile." + '.lock'
             with FileLock(filename):
-                data,min,max,slmarks = processCompletedFields(n, timestamp_index)
+                data, min, max, slmarks = processCompletedFields()
         except Exception as ex:
             print("Error", ex)
             raise PreventUpdate
-        return data,min,max,slmarks
+        return ['']
+        return [data]
+        return data, min, max, slmarks
 
     def getFieldnameFromList(fieldIs2d, listFields, elementid):
         # listFields in format [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]
@@ -265,56 +341,80 @@ if __name__ == '__main__':
 
         return None
 
+    @app.callback([dash.dependencies.Output('snackbar-selecttopic', 'open'),
+                   dash.dependencies.Output('snackbar-selecttopic', 'message')], [Input('topics-table', 'active_cell'),
+                                                                                  Input('topics-table', 'page_current'), Input('topics-table', 'page_size')],
+                  [State('topics-table', 'data')])
+    def select_data(topics_cell, topics_page, topics_psize, topics_data):
+
+        global reg
+        # No cell has been selected yet
+        if not topics_cell:
+            raise PreventUpdate
+        cidx = topics_page*topics_psize + topics_cell['row']
+        if cidx > len(topics_data):
+            print("Error: selected cell does not exists in data table")
+            raise PreventUpdate
+
+        field = topics_data[cidx]['topics'].replace('cosmo_', '')
+
+        reg.subscribe([data.UserDataReq(field, None)])
+
+        return True, "subscribed to " + topics_data[cidx]['topics']
+
     @app.callback(
-        [Output('selected-letter', 'children'),
-         Output('plot-container', 'children'),
+        [Output('plot-container', 'children'),
          Output('level-slider', 'max'),
          Output('level-slider', 'marks')
          ],
-        [Input('mytable', 'active_cell'), Input('timestamp-slider', 'value'),
-         Input('mytable', 'page_current'), Input('mytable', 'page_size'), Input('level-slider', 'value')])
-    def update_graphs(active_cell, timestamp_index, page_current, page_size, level):
+        [Input('received-data', 'active_cell'), Input('received-data', 'page_current'), Input('received-data', 'page_size'),
+         Input('timestamp-slider', 'value'), Input('level-slider', 'value')])
+    def update_graphs(active_cell, page_current, page_size, timestamp_index,  level):
         global listCompletedFields
 
-        if active_cell:
-            timestamp = listCompletedFields[timestamp_index]["timestamp"]
-            listFields = listCompletedFields[timestamp_index]["fields"]
-            idx = active_cell["row"] + page_current*page_size
-            # we are on a page beyond the number of fields
-            if idx >= len(listFields):
-                return "", "", 0, {0: "0"}
+        if not active_cell:
+            raise PreventUpdate
 
-            fieldIs2d = False
-            if active_cell["column"] == 0:
-                fieldIs2d = True
+        timestamp = listCompletedFields[timestamp_index]["timestamp"]
+        listFields = listCompletedFields[timestamp_index]["fields"]
+        idx = active_cell["row"] + page_current*page_size
+        # we are on a page beyond the number of fields
+        if idx >= len(listFields):
+            raise PreventUpdate
 
-            fieldname = getFieldnameFromList(
-                fieldIs2d, listFields, active_cell["row"] + page_current*page_size)
+        fieldIs2d = False
+        if active_cell["column"] == 0:
+            fieldIs2d = True
 
-            #In case the input that trigger the callback is not the table selection, but the timestamp-slider
-            #it can happen that the cell selected is pointing to an out of range in the new timestamp-slider
-            #In that case the fieldname returned by getFieldnameFromList is None
-            if fieldname is None:
-                raise PreventUpdate
+        fieldname = getFieldnameFromList(
+            fieldIs2d, listFields, active_cell["row"] + page_current*page_size)
 
-            field = datapool[timestamp][fieldname].data_
-            fieldarr = np.array(field, copy=False)
+        # In case the input that trigger the callback is not the table selection, but the timestamp-slider
+        # it can happen that the cell selected is pointing to an out of range in the new timestamp-slider
+        # In that case the fieldname returned by getFieldnameFromList is None
+        if fieldname is None:
+            raise PreventUpdate
 
-            figure = {
-                'data': [
-                    go.Heatmap(z=fieldarr.transpose()[level, :, :])],
-                'layout': dict(
-                    margin={'l': 40, 'b': 40, 't': 40, 'r': 10},
-                    width=1000,
-                    height=600,
-                    legend={'x': 0, 'y': 1},
-                    hovermode='closest',
-                    title=fieldname
-                )}
+        field = datapool[timestamp][fieldname].data_
+        fieldarr = np.array(field, copy=False)
 
-            # , {i: str(i) for i in range(fieldarr.shape[2]-1)}]
-            return [fieldname, dcc.Graph(id='plot', figure=figure), (fieldarr.shape[2]-1), {i: str(i) for i in range(fieldarr.shape[2])}]
+        # Level slides is pointing to a previous value from a field that had more levels than the current field
+        if level >= fieldarr.shape[2]:
+            raise PreventUpdate
 
-        return "", "", 0, {0: "0"}
+        figure = {
+            'data': [
+                go.Heatmap(z=fieldarr.transpose()[level, :, :])],
+            'layout': dict(
+                margin={'l': 40, 'b': 40, 't': 40, 'r': 10},
+                width=1000,
+                height=600,
+                legend={'x': 0, 'y': 1},
+                hovermode='closest',
+                title=fieldname
+            )}
+
+        # , {i: str(i) for i in range(fieldarr.shape[2]-1)}]
+        return [dcc.Graph(id='plot', figure=figure), (fieldarr.shape[2]-1), {i: str(i) for i in range(fieldarr.shape[2])}]
 
     app.run_server(debug=True, host='0.0.0.0', port=3001)

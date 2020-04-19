@@ -21,6 +21,7 @@ import os.path
 import datarequest as dreq
 import bisect
 
+
 class ActionType(IntEnum):
     HeaderData = 0
     Data = 1
