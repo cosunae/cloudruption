@@ -31,7 +31,7 @@ endif()
 
 #set(PYBIND11_PYTHON_VERSION 3.6)
 set(PYBIND11_CPP_STANDARD -std=c++17)
-add_subdirectory(${pybind11_SOURCE_DIR})
+add_subdirectory(${pybind11_SOURCE_DIR} ${pybind11_BINARY_DIR})
 
 
 find_package(netCDF REQUIRED)
