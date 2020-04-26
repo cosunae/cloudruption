@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(toy C CXX Fortran)
+project(producer-consumer C CXX Fortran)
 include(FetchContent)
 set (CMAKE_CXX_STANDARD 17)
 
@@ -62,8 +62,6 @@ if(ENABLE_PRODUCER)
   target_include_directories(kafkaproducer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
   target_link_libraries(kafkaproducer ${RDKAFKA_LIBRARIES})
 
-  install(TARGETS kafkaproducer DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
-
   add_executable(producer producer.cpp ${COMMONSRC})
   target_link_libraries(producer kafkaproducer)
   target_link_libraries(producer stdc++fs)
@@ -79,15 +77,16 @@ if(ENABLE_PRODUCER)
   target_link_libraries(producer eccodes)
   target_link_libraries(producer Python3::Python) 
 
-  install(TARGETS producer DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-
   set(BINDPRODUCERSRC 
     interface/bindproducer.cpp
   )
   add_library(bindproducer ${BINDPRODUCERSRC})
-  target_link_libraries(bindproducer kafkaproducer)
+  target_link_libraries(bindproducer PUBLIC kafkaproducer)
+  target_link_libraries(bindproducer INTERFACE stdc++)
 
-  install(TARGETS bindproducer DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+  install(TARGETS kafkaproducer bindproducer EXPORT producer-consumer LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+  install(TARGETS producer DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
 
   if(ENABLE_FORTRAN)
     add_library(fbindproducer interface/bindproducer.f90 interface/bind_data.f90)
@@ -103,7 +102,7 @@ if(ENABLE_PRODUCER)
 
     target_link_libraries(testBindings PRIVATE fbindproducer)
     
-    install(TARGETS fbindproducer DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+    install(TARGETS fbindproducer EXPORT fproducer-consumer LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
 
   endif(ENABLE_FORTRAN)
 
@@ -122,5 +121,10 @@ install(TARGETS consumer DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)
 pybind11_add_module(fieldop fieldop.cpp DistributedField.cpp field.cpp)
 pybind11_add_module(testfieldop test/testfieldop.cpp)
 
+
+install(EXPORT producer-consumer DESTINATION cmake NAMESPACE pc:: FILE producer-consumer-config.cmake)
+if(ENABLE_FORTRAN)
+  install(EXPORT fproducer-consumer DESTINATION cmake NAMESPACE pc::)
+endif()
 
 #install(TARGETS ${python_libname} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
