@@ -25,7 +25,7 @@ FetchContent_Declare(
   GIT_TAG        v2.4.3
 )
 FetchContent_GetProperties(pybind11)
-if(NOT googletest_POPULATED)
+if(NOT pybind11_POPULATED)
   FetchContent_Populate(pybind11)
 endif()
 
