@@ -6,7 +6,6 @@ if(ENABLE_MPI)
   find_package(MPI COMPONENTS CXX Fortran REQUIRED)
 endif()
 find_package(producer-consumer)
-find_package(eccodes)
 
 add_library(fbindproducer ../interface/bindproducer.f90 ../interface/bind_data.f90)
 target_link_libraries(fbindproducer INTERFACE pc::bindproducer)
