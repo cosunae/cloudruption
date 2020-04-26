@@ -1,13 +1,18 @@
 cmake_minimum_required(VERSION 3.10)
-project(toy)
+project(toy C CXX Fortran)
 include(FetchContent)
 set (CMAKE_CXX_STANDARD 17)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 option(ENABLE_PRODUCER ON)
 option(ENABLE_MPI OFF)
+option(ENABLE_FORTRAN OFF)
 if(ENABLE_MPI)
-  find_package(MPI COMPONENTS CXX REQUIRED)
+  if(ENABLE_FORTRAN)
+    find_package(MPI COMPONENTS CXX Fortran REQUIRED)
+  else()
+    find_package(MPI COMPONENTS CXX REQUIRED)
+  endif()
 endif()
   find_package(eccodes)
 
@@ -33,7 +38,7 @@ find_package(netCDF REQUIRED)
 find_package(Rdkafka REQUIRED)
 set(COMMONSRC 
     DistributedField.cpp 
-    DistributedField.h 
+    DistributedField.h
     KeyMessage.h 
     nctools.cpp 
     nctools.h 
@@ -49,21 +54,51 @@ set(COMMONSRC
 
 if(ENABLE_PRODUCER)
   find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+  set(KAFKAPROD_SRC 
+    KafkaProducer.cpp
+    KafkaProducer.h
+  )
+  add_library(kafkaproducer ${KAFKAPROD_SRC})
+  target_include_directories(kafkaproducer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
+  target_link_libraries(kafkaproducer ${RDKAFKA_LIBRARIES})
+
   add_executable(producer producer.cpp ${COMMONSRC})
+  target_link_libraries(producer kafkaproducer)
   target_link_libraries(producer stdc++fs)
 
   if(ENABLE_MPI)
     target_compile_definitions(producer PUBLIC ENABLE_MPI)
   endif()
   target_include_directories(producer SYSTEM PUBLIC ${netCDF_INCLUDE_DIR})
-  target_include_directories(producer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
   target_include_directories(producer SYSTEM PUBLIC ${MPI_CXX_INCLUDE_DIRS})
 
   target_link_libraries(producer ${netCDF_LIBRARIES})
-  target_link_libraries(producer ${RDKAFKA_LIBRARIES})
   target_link_libraries(producer ${MPI_CXX_LIBRARIES})
   target_link_libraries(producer eccodes)
   target_link_libraries(producer Python3::Python) 
+
+  set(BINDPRODUCERSRC 
+    interface/bindproducer.cpp
+  )
+  add_library(bindproducer ${BINDPRODUCERSRC})
+  target_link_libraries(bindproducer kafkaproducer)
+
+  if(ENABLE_FORTRAN)
+    add_library(fbindproducer interface/bindproducer.f90 interface/bind_data.f90)
+    target_link_libraries(fbindproducer INTERFACE bindproducer)
+    add_executable(testBindings test/testBindings.f90)
+    target_compile_options(testBindings PUBLIC -cpp)
+
+    if(ENABLE_MPI)
+      target_compile_definitions(testBindings PRIVATE ENABLE_MPI)
+      target_include_directories(testBindings PRIVATE ${MPI_Fortran_INCLUDE_DIRS})
+      target_link_libraries(testBindings PRIVATE ${MPI_Fortran_LIBRARIES})
+    endif(ENABLE_MPI)
+
+    target_link_libraries(testBindings PRIVATE fbindproducer)
+    
+  endif(ENABLE_FORTRAN)
+
 endif()
 
 add_executable(consumer consumer.cpp ${COMMONSRC})
@@ -75,7 +110,7 @@ target_link_libraries(consumer PRIVATE ${RDKAFKA_LIBRARIES})
 target_link_libraries(consumer PRIVATE "stdc++fs")
 
 pybind11_add_module(fieldop fieldop.cpp DistributedField.cpp field.cpp)
-pybind11_add_module(testfieldop testfieldop.cpp)
+pybind11_add_module(testfieldop test/testfieldop.cpp)
 
 
 #install(TARGETS ${python_libname} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)

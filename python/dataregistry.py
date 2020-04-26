@@ -225,7 +225,7 @@ def get_key(msg):
     stringlist = ''.join([x.decode('utf-8') for x in c1[1:33]])
     allargs = list(c1[0:1]) + [stringlist] + list(c1[33:])
     key = data.MsgKey(*allargs)
-    key.key = key.key.rstrip('\x00')
+    key.key = key.key.rstrip()
     return key
 
 
@@ -266,6 +266,7 @@ class DataRegistryStreaming(DataRegistry):
         al = np.frombuffer(msg.value(), dtype=dt)
 
         msKey: data.MsgKey = get_key(msg.key())
+
         if msKey.action_type != int(ActionType.Data):
             return
 

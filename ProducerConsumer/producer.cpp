@@ -15,7 +15,6 @@
 #include <iostream>
 #include <netcdf.h>
 #include <numeric>
-#include <rdkafkacpp.h>
 #include <set>
 #include <stdint.h>
 #include <stdio.h>
@@ -27,6 +26,8 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <filesystem>
+#include "KafkaProducer.h"
+
 namespace fs = std::filesystem;
 
 #if SIZE_MAX == UCHAR_MAX
@@ -45,76 +46,19 @@ namespace fs = std::filesystem;
 
 /* Handle errors by printing an error message and exiting with a
  * non-zero status. */
-#define ERR(e)                                                                 \
-  {                                                                            \
-    printf("Error: %s\n", nc_strerror(e));                                     \
-    return e;                                                                  \
+#define ERR(e)                             \
+  {                                        \
+    printf("Error: %s\n", nc_strerror(e)); \
+    return e;                              \
   }
-#define ERRC(e)                                                                \
-  {                                                                            \
-    printf("Error: %s\n", nc_strerror(e));                                     \
-    ierror = e;                                                                \
+#define ERRC(e)                            \
+  {                                        \
+    printf("Error: %s\n", nc_strerror(e)); \
+    ierror = e;                            \
   }
 
-class ExampleEventCb : public RdKafka::EventCb {
-public:
-  void event_cb(RdKafka::Event &event) {
-    switch (event.type()) {
-    case RdKafka::Event::EVENT_ERROR:
-      //      if (event.fatal()) {
-      //        std::cerr << "FATAL ";
-      //        run = false;
-      //      }
-      std::cerr << "ERROR (" << RdKafka::err2str(event.err())
-                << "): " << event.str() << std::endl;
-      break;
-
-    case RdKafka::Event::EVENT_STATS:
-      std::cerr << "\"STATS\": " << event.str() << std::endl;
-      break;
-
-    case RdKafka::Event::EVENT_LOG:
-      fprintf(stderr, "LOG-%i-%s: %s\n", event.severity(), event.fac().c_str(),
-              event.str().c_str());
-      break;
-
-    default:
-      std::cerr << "EVENT " << event.type() << " ("
-                << RdKafka::err2str(event.err()) << "): " << event.str()
-                << std::endl;
-      break;
-    }
-  }
-};
-
-class ExampleDeliveryReportCb : public RdKafka::DeliveryReportCb {
-public:
-  void dr_cb(RdKafka::Message &message) {
-    // TODO recover from master
-    std::string status_name;
-    //    switch (message.()) {
-    //    case RdKafka::Message::MSG_STATUS_NOT_PERSISTED:
-    //      status_name = "NotPersisted";
-    //      break;
-    //    case RdKafka::Message::MSG_STATUS_POSSIBLY_PERSISTED:
-    //      status_name = "PossiblyPersisted";
-    //      break;
-    //    case RdKafka::Message::MSG_STATUS_PERSISTED:
-    //      status_name = "Persisted";
-    //      break;
-    //    default:
-    //      status_name = "Unknown?";
-    //      break;
-    //    }
-    std::cout << "Message delivery for (" << message.len()
-              << " bytes): " << status_name << ": " << message.errstr()
-              << std::endl;
-    if (message.key())
-      std::cout << "Key: " << *(message.key()) << ";" << std::endl;
-  }
-};
-
-void mpierror() {
+void mpierror()
+{
 #ifdef ENABLE_MPI
   MPI_Abort(MPI_COMM_WORLD, -1);
 #else
@@ -122,173 +66,8 @@ void mpierror() {
 #endif
 }
 
-class KafkaProducer {
-  /*
-   * Create configuration objects
-   */
-  RdKafka::Conf *conf_;
-  const int32_t partition_ = RdKafka::Topic::PARTITION_UA;
-  const std::string broker_;
-
-  RdKafka::Producer *producer_;
-  ExampleDeliveryReportCb ex_dr_cb_;
-  ExampleEventCb ex_event_cb_;
-
-public:
-  KafkaProducer(std::string broker = "localhost:9092")
-      : conf_(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL)),
-        broker_(broker) {
-    std::string errstr;
-
-    /*
-     * Set configuration properties
-     */
-    if (conf_->set("metadata.broker.list", broker_, errstr) !=
-        RdKafka::Conf::CONF_OK) {
-      std::cerr << errstr << std::endl;
-      exit(1);
-    }
-
-    if (conf_->set("event_cb", &ex_event_cb_, errstr) !=
-        RdKafka::Conf::CONF_OK) {
-      std::cerr << errstr << std::endl;
-      exit(1);
-    }
-
-    //    if (conf_->set("group.id", "group1", errstr) !=
-    //    RdKafka::Conf::CONF_OK) {
-    //      std::cerr << errstr << std::endl;
-    //      exit(1);
-    //    }
-
-    //  auto dump = conf->dump();
-    //  for (std::list<std::string>::iterator it = dump->begin();
-    //       it != dump->end();) {
-    //    std::cout << *it << " = ";
-    //    it++;
-    //    std::cout << *it << std::endl;
-    //    it++;
-    //  }
-    //  std::cout << std::endl;
-
-    /* Set delivery report callback */
-    if (conf_->set("dr_cb", &ex_dr_cb_, errstr) != RdKafka::Conf::CONF_OK) {
-      std::cerr << errstr << std::endl;
-      exit(1);
-    }
-
-    /*
-     * Create producer using accumulated global configuration.
-     */
-    producer_ = RdKafka::Producer::create(conf_, errstr);
-    if (!producer_) {
-      std::cerr << "Failed to create producer: " << errstr << std::endl;
-      exit(1);
-    }
-
-    std::cout << "% Created producer " << producer_->name() << std::endl;
-  }
-
-  //  void sendHeader(std::string filename, size_t timestamp,
-  //                  std::string fieldname) {
-  //    std::cout << "Sending header for topic: " << fieldname << std::endl;
-  //    auto key = getMsgKey(ActionType::HeaderData, timestamp, fieldname, -1);
-
-  //    TopicHeader headerData;
-  //    strcpy(
-  //        headerData.filename,
-  //        filename.substr(0, std::min((size_t)(256),
-  //        filename.length())).c_str());
-
-  //    std::string topic = std::string("cosmo_") + fieldname;
-
-  //    RdKafka::ErrorCode resp = producer_->produce(
-  //        topic, partition_, RdKafka::Producer::RK_MSG_COPY /* Copy payload
-  //        */,
-  //        /* Value */
-  //        static_cast<void *>(&(headerData)), sizeof(headerData),
-  //        /* Key */
-  //        &key, sizeof(KeyMessage),
-  //        /* Timestamp (defaults to now) */
-  //        0, NULL);
-
-  //    if (resp != RdKafka::ERR_NO_ERROR) {
-  //      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) <<
-  //      std::endl;
-  //    } else {
-  //      std::cerr << "% Produced Header msg for filename " << filename
-  //                << std::endl;
-  //    }
-  //  }
-
-  //  void sendClose(std::string filename, size_t timestamp,
-  //                 std::string fieldname) {
-  //    std::cout << "Sending close for topic: " << fieldname << std::endl;
-  //    auto key = getMsgKey(ActionType::EndData, timestamp, fieldname, -2);
-
-  //    TopicHeader headerData;
-  //    strcpy(
-  //        headerData.filename,
-  //        filename.substr(0, std::min((size_t)(256),
-  //        filename.length())).c_str());
-
-  //    std::string topic = std::string("cosmo_") + fieldname;
-
-  //    RdKafka::ErrorCode resp = producer_->produce(
-  //        topic, partition_, RdKafka::Producer::RK_MSG_COPY /* Copy payload
-  //        */,
-  //        /* Value */
-  //        static_cast<void *>(&(headerData)), sizeof(headerData),
-  //        /* Key */
-  //        &key, sizeof(KeyMessage),
-  //        /* Timestamp (defaults to now) */
-  //        0, NULL);
-
-  //    if (resp != RdKafka::ERR_NO_ERROR) {
-  //      std::cerr << "% Produce failed: " << RdKafka::err2str(resp) <<
-  //      std::endl;
-  //    } else {
-  //      std::cerr << "% Produced Header msg for filename " << filename
-  //                << std::endl;
-  //    }
-  //  }
-
-  void produce(KeyMessage key, float *data, size_t datasize,
-               std::string fieldname) const {
-    /*
-     * Produce message
-     */
-
-    std::string topic = std::string("cosmo_") + fieldname;
-
-    std::cout << "Producing on topic :" << topic << std::endl;
-    RdKafka::ErrorCode resp = producer_->produce(
-        topic, partition_, RdKafka::Producer::RK_MSG_COPY /* Copy payload */,
-        /* Value */
-        static_cast<void *>(data), datasize,
-        /* Key */
-        &key, sizeof(KeyMessage),
-        /* Timestamp (defaults to now) */
-        0, NULL);
-
-    if (resp != RdKafka::ERR_NO_ERROR) {
-      std::cerr << "% Produce failed: topic [" << topic << "], partition ["
-                << partition_ << "], broker [" << broker_ << "], sizeof msg ["
-                << sizeof(KeyMessage) << "], error :" << RdKafka::err2str(resp)
-                << std::endl;
-    } else {
-      std::cout << "% Produced message (" << datasize << " bytes)" << std::endl;
-    }
-    producer_->poll(0);
-
-    while (producer_->outq_len() > 0) {
-      std::cerr << "Waiting for " << producer_->outq_len() << std::endl;
-      producer_->poll(1000);
-    }
-  }
-};
-
-long getTimestamp(codes_handle *h) {
+long getTimestamp(codes_handle *h)
+{
   long year, month, day, hour, minute, second;
   CODES_CHECK(codes_get_long(h, "year", &year), 0);
   CODES_CHECK(codes_get_long(h, "month", &month), 0);
@@ -298,18 +77,20 @@ long getTimestamp(codes_handle *h) {
   CODES_CHECK(codes_get_long(h, "second", &second), 0);
 
   std::tm c = {(int)second, (int)minute, (int)hour, (int)day, (int)month,
-               (int)year,   0,           0,         -1};
+               (int)year, 0, 0, -1};
 
   std::time_t l = std::mktime(&c);
   return static_cast<long>(l);
 }
 
-struct FieldMetadata {
+struct FieldMetadata
+{
   long longitudeOfFirstGridPoint, longitudeOfLastGridPoint,
       latitudeOfFirstGridPoint, latitudeOfLastGridPoint;
 };
 
-class FieldHandler {
+class FieldHandler
+{
   const int mpirank_, mpisize_;
   std::string filename_;
   long timestamp_;
@@ -332,37 +113,44 @@ public:
   FieldHandler(int mpirank, int mpisize, std::string filename, long timestamp,
                std::string parseGribExe)
       : mpirank_(mpirank), mpisize_(mpisize), filename_(filename),
-        timestamp_(timestamp), parseGribExe_(parseGribExe) {
+        timestamp_(timestamp), parseGribExe_(parseGribExe)
+  {
     // domain decomposition as
     // 0 1 2
     // 3 4 5
 
     float a = std::sqrt(mpisize_);
-    for (int i = (int)a; i > 0; --i) {
-      if (mpisize_ % i == 0) {
+    for (int i = (int)a; i > 0; --i)
+    {
+      if (mpisize_ % i == 0)
+      {
         gridconf_.nbx = i;
         gridconf_.nby = mpisize_ / gridconf_.nbx;
         break;
       }
     }
 
-    if (gridconf_.nbx == -1 || gridconf_.nby == -1) {
+    if (gridconf_.nbx == -1 || gridconf_.nby == -1)
+    {
       throw std::runtime_error(
           "Error: could not find a valid domain decomposition");
     }
   }
 
-  void setupGlobalField(std::string fieldname) {
+  void setupGlobalField(std::string fieldname)
+  {
     if (mpirank_ != 0)
       throw std::runtime_error("global field can only be setup by mpirank 0");
 
-    if (!fglob_.count(fieldname)) {
+    if (!fglob_.count(fieldname))
+    {
       fglob_[fieldname] =
           new field3d(gridconf_.lonlen, gridconf_.latlen, gridconf_.levlen);
     }
   }
 
-  int setupGridConf() {
+  int setupGridConf()
+  {
 
     subdomainconf_.levels = gridconf_.levlen;
 
@@ -395,13 +183,16 @@ public:
   const SubDomainConf &getSubdomainconf() const { return subdomainconf_; }
   const GridConf &getGridconf() const { return gridconf_; }
 
-  field3d &getSubdomainField() const {
+  field3d &getSubdomainField() const
+  {
     assert(fsubd_);
     return *fsubd_;
   }
 
-  void printConf() {
-    if (mpirank_ == 0) {
+  void printConf()
+  {
+    if (mpirank_ == 0)
+    {
       std::cout << "------------  domain conf ------------" << std::endl;
       std::cout << "nbx : " << gridconf_.nbx << std::endl;
       std::cout << "nby : " << gridconf_.nby << std::endl;
@@ -412,7 +203,8 @@ public:
 
   std::string getFieldName(long table2Version, long indicatorOfParameter,
                            std::string indicatorOfTypeOfLevel, long typeOfLevel,
-                           long timeRangeIndicator) {
+                           long timeRangeIndicator)
+  {
 
     PyObject *pName, *pModule, *pFunc;
     PyObject *pArgs, *pValue;
@@ -432,7 +224,8 @@ public:
 
     pModule = PyImport_Import(pName);
     Py_DECREF(pName);
-    if (!pModule) {
+    if (!pModule)
+    {
       PyErr_Print();
       throw std::runtime_error("Failed to load");
     }
@@ -440,7 +233,8 @@ public:
     pFunc = PyObject_GetAttrString(pModule, "getGribFieldname_c");
     /* pFunc is a new reference */
 
-    if (!pFunc || !PyCallable_Check(pFunc)) {
+    if (!pFunc || !PyCallable_Check(pFunc))
+    {
       if (PyErr_Occurred())
         PyErr_Print();
       throw std::runtime_error("Call Failed");
@@ -448,7 +242,8 @@ public:
 
     pArgs = PyTuple_New(5);
     pValue = PyLong_FromLong(table2Version);
-    if (!pValue) {
+    if (!pValue)
+    {
       Py_DECREF(pArgs);
       Py_DECREF(pModule);
       throw std::runtime_error("Cannot convert argument\n");
@@ -457,7 +252,8 @@ public:
     PyTuple_SetItem(pArgs, 0, pValue);
 
     pValue = PyLong_FromLong(indicatorOfParameter);
-    if (!pValue) {
+    if (!pValue)
+    {
       Py_DECREF(pArgs);
       Py_DECREF(pModule);
       throw std::runtime_error("Cannot convert argument\n");
@@ -466,7 +262,8 @@ public:
     PyTuple_SetItem(pArgs, 1, pValue);
 
     pValue = PyUnicode_FromString(indicatorOfTypeOfLevel.c_str());
-    if (!pValue) {
+    if (!pValue)
+    {
       Py_DECREF(pArgs);
       Py_DECREF(pModule);
       throw std::runtime_error("Cannot convert argument\n");
@@ -475,7 +272,8 @@ public:
     PyTuple_SetItem(pArgs, 2, pValue);
 
     pValue = PyLong_FromLong(typeOfLevel);
-    if (!pValue) {
+    if (!pValue)
+    {
       Py_DECREF(pArgs);
       Py_DECREF(pModule);
       throw std::runtime_error("Cannot convert argument\n");
@@ -484,7 +282,8 @@ public:
     PyTuple_SetItem(pArgs, 3, pValue);
 
     pValue = PyLong_FromLong(timeRangeIndicator);
-    if (!pValue) {
+    if (!pValue)
+    {
       Py_DECREF(pArgs);
       Py_DECREF(pModule);
       throw std::runtime_error("Cannot convert argument\n");
@@ -493,7 +292,8 @@ public:
     PyTuple_SetItem(pArgs, 4, pValue);
 
     pValue = PyObject_CallObject(pFunc, pArgs);
-    if (!pValue) {
+    if (!pValue)
+    {
       if (PyErr_Occurred())
         PyErr_Print();
       throw std::runtime_error("Error capturing python result");
@@ -503,23 +303,27 @@ public:
     Py_XDECREF(pFunc);
     Py_DECREF(pModule);
 
-    if (Py_FinalizeEx() < 0) {
+    if (Py_FinalizeEx() < 0)
+    {
       throw std::runtime_error("Error closing python interpreter");
     }
 
     return res;
   }
-  void getFileMetadata() {
+  void getFileMetadata()
+  {
     FILE *in = NULL;
     int err = 0;
 
     /* Message handle. Required in all the ecCodes calls acting on a
      * message.*/
     codes_handle *h = NULL;
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
 
       in = fopen(filename_.c_str(), "rb");
-      if (!in) {
+      if (!in)
+      {
         printf("ERROR: unable to open file %s\n", filename_.c_str());
         exit(1);
       }
@@ -529,7 +333,8 @@ public:
       // msg of the second loop that sends data to kafka
       /* Loop on all the messages in a file.*/
       while ((h = codes_handle_new_from_file(0, in, PRODUCT_GRIB, &err)) !=
-             NULL) {
+             NULL)
+      {
         /* Check of errors after reading a message. */
         if (err != CODES_SUCCESS)
           CODES_CHECK(err, 0);
@@ -581,9 +386,12 @@ public:
 
         allFields_[fieldname] = fmetadata;
 
-        if (levels_.count(fieldname)) {
+        if (levels_.count(fieldname))
+        {
           levels_[fieldname] = levels_[fieldname] + 1;
-        } else {
+        }
+        else
+        {
           levels_[fieldname] = 1;
         }
         long bottomLevel;
@@ -591,10 +399,13 @@ public:
         long topLevel;
         CODES_CHECK(codes_get_long(h, "topLevel", &topLevel), 0);
 
-        if (!topLevels_.count(fieldname)) {
+        if (!topLevels_.count(fieldname))
+        {
           topLevels_[fieldname] = std::vector<int>();
           topLevels_[fieldname].push_back(topLevel);
-        } else {
+        }
+        else
+        {
           auto &levelsList = topLevels_[fieldname];
           topLevels_[fieldname].insert(
               std::lower_bound(levelsList.begin(), levelsList.end(), topLevel),
@@ -621,9 +432,11 @@ public:
     char fbuff[allfields_buffersize];
 
     std::vector<int> fieldnamesizes(numFields);
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
       int i = 0;
-      for (auto &field : allFields_) {
+      for (auto &field : allFields_)
+      {
         strcpy(&(fbuff[32 * i]), field.first.c_str());
         fieldnamesizes[i] = field.first.size();
         ++i;
@@ -636,9 +449,11 @@ public:
     MPI_Bcast(&fbuff, allfields_buffersize, MPI_CHAR, 0, MPI_COMM_WORLD);
 #endif
     std::vector<FieldMetadata> lmetadata(numFields);
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
       int i = 0;
-      for (auto &field : allFields_) {
+      for (auto &field : allFields_)
+      {
         lmetadata[i] = field.second;
         ++i;
       }
@@ -646,8 +461,10 @@ public:
 #ifdef ENABLE_MPI
     MPI_Bcast(lmetadata.data(), numFields * 4, MPI_LONG, 0, MPI_COMM_WORLD);
 #endif
-    if (mpirank_ != 0) {
-      for (int i = 0; i < numFields; ++i) {
+    if (mpirank_ != 0)
+    {
+      for (int i = 0; i < numFields; ++i)
+      {
         std::stringstream ss;
         for (int j = 32 * i; j < 32 * i + fieldnamesizes[i]; ++j)
           ss << fbuff[j];
@@ -656,8 +473,11 @@ public:
         FieldMetadata fmetadata = lmetadata[i];
         allFields_[fieldname] = fmetadata;
       }
-    } else {
-      for (int i = 0; i < numFields; ++i) {
+    }
+    else
+    {
+      for (int i = 0; i < numFields; ++i)
+      {
 
         std::stringstream ss;
         for (int j = 32 * i; j < 32 * i + fieldnamesizes[i]; ++j)
@@ -668,7 +488,8 @@ public:
     }
 
     int levelssize;
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
       levelssize = levels_.size();
     }
 #ifdef ENABLE_MPI
@@ -676,9 +497,11 @@ public:
 #endif
     std::vector<size_t> levelsflat(levelssize);
 
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
       int i = 0;
-      for (auto &field : allFields_) {
+      for (auto &field : allFields_)
+      {
         levelsflat[i] = levels_[field.first];
         i++;
       }
@@ -687,9 +510,11 @@ public:
     MPI_Bcast(levelsflat.data(), levelssize, MPI_LONG, 0, MPI_COMM_WORLD);
 #endif
 
-    if (mpirank_ != 0) {
+    if (mpirank_ != 0)
+    {
       int i = 0;
-      for (auto &field : allFields_) {
+      for (auto &field : allFields_)
+      {
         levels_[field.first] = levelsflat[i];
         i++;
       }
@@ -699,7 +524,8 @@ public:
         [](int acc, std::pair<std::string, int> p) { return acc + p.second; });
   }
 
-  void getMessages() {
+  void getMessages()
+  {
 
     FILE *in = NULL;
     int err = 0;
@@ -709,16 +535,19 @@ public:
      * message.*/
     codes_handle *h = NULL;
 
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
       in = fopen(filename_.c_str(), "rb");
-      if (!in) {
+      if (!in)
+      {
         printf("ERROR: unable to open file %s\n", filename);
         exit(1);
       }
 
       /* Loop on all the messages in a file.*/
       while ((h = codes_handle_new_from_file(0, in, PRODUCT_GRIB, &err)) !=
-             NULL) {
+             NULL)
+      {
         /* Check of errors after reading a message. */
         if (err != CODES_SUCCESS)
           CODES_CHECK(err, 0);
@@ -772,7 +601,8 @@ public:
         CODES_CHECK(codes_get_long(h, "jPointsAreConsecutive", &jConsecutive),
                     0);
 
-        if (jConsecutive) {
+        if (jConsecutive)
+        {
           throw std::runtime_error("jpoints consecutive not supported");
         }
 
@@ -780,7 +610,8 @@ public:
         CODES_CHECK(codes_get_size(h, "values", &values_len), 0);
 
         field3d *ffield = fglob_[fieldname];
-        if (values_len != ffield->isize() * ffield->jsize()) {
+        if (values_len != ffield->isize() * ffield->jsize())
+        {
           throw std::runtime_error(
               "values extracted do not match in size with metadata");
         }
@@ -796,8 +627,10 @@ public:
         CODES_CHECK(codes_get_double_array(h, "values", values, &values_len),
                     0);
 
-        for (int i = 0; i < ffield->isize(); ++i) {
-          for (int j = 0; j < ffield->jsize(); ++j) {
+        for (int i = 0; i < ffield->isize(); ++i)
+        {
+          for (int j = 0; j < ffield->jsize(); ++j)
+          {
             (*ffield)(i, j, k) = values[i + j * ffield->isize()];
           }
         }
@@ -810,11 +643,14 @@ public:
     }
   }
 
-  void produce(KafkaProducer const &producer) {
-    for (auto field : allFields_) {
+  void produce(KafkaProducer const &producer)
+  {
+    for (auto field : allFields_)
+    {
       auto fieldname = field.first;
       auto fieldmetadata = field.second;
-      if (mpirank_ == 0) {
+      if (mpirank_ == 0)
+      {
         field3d *ffield = fglob_[fieldname];
 
         gridconf_.lonlen = ffield->isize();
@@ -829,7 +665,8 @@ public:
       scatterSubdomains(fieldname);
 
       std::cout << "Producing " << fieldname << std::endl;
-      for (size_t k = 0; k < gridconf_.levlen; ++k) {
+      for (size_t k = 0; k < gridconf_.levlen; ++k)
+      {
         producer.produce(getMsgKey(ActionType::Data, timestamp_, fieldname,
                                    fieldmetadata, k),
                          (&(getSubdomainField()(0, 0, k))),
@@ -840,12 +677,14 @@ public:
     }
   }
 
-  void scatterSubdomains(std::string fieldname) {
+  void scatterSubdomains(std::string fieldname)
+  {
     field3d ft(patchFieldProp_->getSizes()[0], patchFieldProp_->getSizes()[1],
                patchFieldProp_->getSizes()[2]);
 
     float *fscat = nullptr;
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
       size_t istridet = 1;
       size_t jstridet = istridet * gridconf_.isizepatch;
       size_t kstridet = jstridet * gridconf_.jsizepatch;
@@ -855,11 +694,16 @@ public:
       // temporary field to prepare all the blocks
       fscat = (float *)malloc(patchFieldProp_->totalsize_ * gridconf_.nbx *
                               gridconf_.nby * sizeof(float));
-      for (int bj = 0; bj < gridconf_.nby; ++bj) {
-        for (int bi = 0; bi < gridconf_.nbx; ++bi) {
-          for (int k = 0; k < gridconf_.levlen; ++k) {
-            for (int j = 0; j < gridconf_.jsizepatch; ++j) {
-              for (int i = 0; i < gridconf_.isizepatch; ++i) {
+      for (int bj = 0; bj < gridconf_.nby; ++bj)
+      {
+        for (int bi = 0; bi < gridconf_.nbx; ++bi)
+        {
+          for (int k = 0; k < gridconf_.levlen; ++k)
+          {
+            for (int j = 0; j < gridconf_.jsizepatch; ++j)
+            {
+              for (int i = 0; i < gridconf_.isizepatch; ++i)
+              {
 
                 size_t iglb = bi * gridconf_.isizepatch + i;
                 size_t jglb = bj * gridconf_.jsizepatch + j;
@@ -869,14 +713,16 @@ public:
                 if (i * istridet + j * jstridet + k * kstridet +
                         bi * bistridet + bj * bjstridet >=
                     patchFieldProp_->totalsize_ * gridconf_.nbx *
-                        gridconf_.nby * sizeof(float)) {
+                        gridconf_.nby * sizeof(float))
+                {
                   mpierror();
                   throw std::runtime_error("ERROR out of bound");
                 }
                 if (iglb * globalFieldProp_->strides_[0] +
                         jglb * globalFieldProp_->strides_[1] +
                         k * globalFieldProp_->strides_[2] >=
-                    globalFieldProp_->totalsize_ * sizeof(float)) {
+                    globalFieldProp_->totalsize_ * sizeof(float))
+                {
                   mpierror();
                   throw std::runtime_error("ERROR out of bound");
                 }
@@ -899,18 +745,23 @@ public:
                 MPI_FLOAT, 0, MPI_COMM_WORLD);
 #endif
 
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
       free(fscat);
     }
-    if (fsubd_) {
+    if (fsubd_)
+    {
       free(fsubd_);
     }
     fsubd_ = new field3d(subdomainconf_.isize, subdomainconf_.jsize,
                          subdomainconf_.levels);
 
-    for (size_t k = 0; k < gridconf_.levlen; ++k) {
-      for (size_t j = 0; j < subdomainconf_.jsize; ++j) {
-        for (size_t i = 0; i < subdomainconf_.isize; ++i) {
+    for (size_t k = 0; k < gridconf_.levlen; ++k)
+    {
+      for (size_t j = 0; j < subdomainconf_.jsize; ++j)
+      {
+        for (size_t i = 0; i < subdomainconf_.isize; ++i)
+        {
 #ifdef ENABLE_MPI
           (*fsubd_)(i, j, k) = ft(i, j, k);
 #else
@@ -922,7 +773,8 @@ public:
   }
   KeyMessage getMsgKey(ActionType actionType, size_t timestamp,
                        std::string fieldname, const FieldMetadata &metadata,
-                       const size_t lev) const {
+                       const size_t lev) const
+  {
     const auto &subdomainconf = getSubdomainconf();
     auto domainFieldProp = getDomainFieldProp();
     const auto &gridconf = getGridconf();
@@ -947,7 +799,8 @@ public:
   }
 };
 
-class GribDecoder {
+class GribDecoder
+{
   std::string filename_;
   int mpirank_;
   int mpisize_;
@@ -956,7 +809,8 @@ public:
   GribDecoder(int mpirank, int mpisize, std::string filename)
       : filename_(filename), mpirank_(mpirank), mpisize_(mpisize) {}
 
-  void decode(KafkaProducer const &producer, std::string parseGribExe) {
+  void decode(KafkaProducer const &producer, std::string parseGribExe)
+  {
 
     FILE *in = NULL;
     int err = 0;
@@ -965,10 +819,12 @@ public:
     /* Message handle. Required in all the ecCodes calls acting on a
      * message.*/
     codes_handle *h = NULL;
-    if (mpirank_ == 0) {
+    if (mpirank_ == 0)
+    {
 
       in = fopen(filename_.c_str(), "rb");
-      if (!in) {
+      if (!in)
+      {
         printf("ERROR: unable to open file %s\n", filename_.c_str());
         exit(1);
       }
@@ -978,7 +834,8 @@ public:
       // msg of the second loop that sends data to kafka
       /* Loop on all the messages in a file.*/
       while ((h = codes_handle_new_from_file(0, in, PRODUCT_GRIB, &err)) !=
-             NULL) {
+             NULL)
+      {
         /* Check of errors after reading a message. */
         if (err != CODES_SUCCESS)
           CODES_CHECK(err, 0);
@@ -987,7 +844,8 @@ public:
 
         if (timestamps.count(timestamp))
           continue;
-        else {
+        else
+        {
           timestamps.insert(timestamp);
         }
         /* At the end the codes_handle is deleted to free memory. */
@@ -1004,13 +862,15 @@ public:
 #ifdef ENABLE_MPI
     MPI_Bcast(&timest_size, 1, MPI_LONG, 0, MPI_COMM_WORLD);
 #endif
-    if (mpirank_ != 0) {
+    if (mpirank_ != 0)
+    {
       vtimestamps.resize(timest_size);
     }
 #ifdef ENABLE_MPI
     MPI_Bcast(vtimestamps.data(), timest_size, MPI_LONG, 0, MPI_COMM_WORLD);
 #endif
-    for (auto timestamp : vtimestamps) {
+    for (auto timestamp : vtimestamps)
+    {
       std::cout << "[" << mpirank_ << "] Processing timestamp :" << timestamp
                 << std::endl;
       FieldHandler fhandler(mpirank_, mpisize_, filename_, timestamp,
@@ -1022,7 +882,8 @@ public:
   }
 };
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
 #ifdef ENABLE_MPI
   MPI_Init(&argc, &argv);
 #endif
@@ -1030,19 +891,23 @@ int main(int argc, char **argv) {
   int mpisize = 1;
 
   std::string config_filename = "config.json";
-  if (argc > 1) {
+  if (argc > 1)
+  {
     config_filename = std::string(argv[1]);
   }
   Config config(config_filename);
 
-  if (!std::filesystem::exists(config.get<std::string>("parsegrib"))) {
+  if (!std::filesystem::exists(config.get<std::string>("parsegrib")))
+  {
     throw std::runtime_error(
         "parseGrib python file defined in config.json does not exists :" +
         config.get<std::string>("parsegrib"));
   }
 
-  if (config.has("lockfile")) {
-    if (std::filesystem::exists(config.get<std::string>("lockfile"))) {
+  if (config.has("lockfile"))
+  {
+    if (std::filesystem::exists(config.get<std::string>("lockfile")))
+    {
       throw std::runtime_error("lock file exists, can not acquire lock");
     }
     std::ofstream f(config.get<std::string>("lockfile"));
@@ -1057,7 +922,8 @@ int main(int argc, char **argv) {
 #endif
   auto files = config.getFiles();
 
-  for (auto file : files) {
+  for (auto file : files)
+  {
     KafkaProducer producer(config.get<std::string>("kafkabroker"));
 
     GribDecoder gribDecoder(myrank, mpisize, file);
@@ -1067,7 +933,8 @@ int main(int argc, char **argv) {
   MPI_Finalize();
 #endif
 
-  if (config.has("lockfile")) {
+  if (config.has("lockfile"))
+  {
     std::remove(config.get<std::string>("lockfile").c_str());
   }
 }

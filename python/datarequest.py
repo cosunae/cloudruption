@@ -20,6 +20,8 @@ class DataRequest:
         self.patches_.append(patch)
 
         if not self.datadesc_:
+            # in case there is a user request frame, the received data
+            # is framed within the user request frame
             if self.user_data_req_.data_desc:
                 data_desc = self.user_data_req_.data_desc
 

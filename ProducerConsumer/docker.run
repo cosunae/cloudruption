@@ -1,0 +1,1 @@
+docker run -v /code/cloudruption/ProducerConsumer/:/home/cloudruption/config --env-file=docker_env --network="host" a7582eb84a86
