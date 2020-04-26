@@ -62,6 +62,8 @@ if(ENABLE_PRODUCER)
   target_include_directories(kafkaproducer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
   target_link_libraries(kafkaproducer ${RDKAFKA_LIBRARIES})
 
+  install(TARGETS kafkaproducer DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+
   add_executable(producer producer.cpp ${COMMONSRC})
   target_link_libraries(producer kafkaproducer)
   target_link_libraries(producer stdc++fs)
@@ -77,11 +79,15 @@ if(ENABLE_PRODUCER)
   target_link_libraries(producer eccodes)
   target_link_libraries(producer Python3::Python) 
 
+  install(TARGETS producer DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
   set(BINDPRODUCERSRC 
     interface/bindproducer.cpp
   )
   add_library(bindproducer ${BINDPRODUCERSRC})
   target_link_libraries(bindproducer kafkaproducer)
+
+  install(TARGETS bindproducer DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
 
   if(ENABLE_FORTRAN)
     add_library(fbindproducer interface/bindproducer.f90 interface/bind_data.f90)
@@ -97,6 +103,8 @@ if(ENABLE_PRODUCER)
 
     target_link_libraries(testBindings PRIVATE fbindproducer)
     
+    install(TARGETS fbindproducer DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+
   endif(ENABLE_FORTRAN)
 
 endif()
@@ -108,6 +116,8 @@ target_include_directories(consumer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
 target_link_libraries(consumer PRIVATE ${netCDF_LIBRARIES})
 target_link_libraries(consumer PRIVATE ${RDKAFKA_LIBRARIES})
 target_link_libraries(consumer PRIVATE "stdc++fs")
+
+install(TARGETS consumer DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)
 
 pybind11_add_module(fieldop fieldop.cpp DistributedField.cpp field.cpp)
 pybind11_add_module(testfieldop test/testfieldop.cpp)
