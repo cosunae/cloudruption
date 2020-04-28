@@ -8,6 +8,7 @@ endif()
 find_package(producer-consumer)
 
 add_library(fbindproducer ../interface/bindproducer.f90 ../interface/bind_data.f90)
+set_target_properties(fbindproducer PROPERTIES PUBLIC_HEADER "../interface/bindproducer.mod;../interface/bind_data.mod")
 target_link_libraries(fbindproducer INTERFACE pc::bindproducer)
 add_executable(testBindings ../test/testBindings.f90)
 target_compile_options(testBindings PUBLIC -cpp)
@@ -20,5 +21,5 @@ endif(ENABLE_MPI)
 
 target_link_libraries(testBindings PRIVATE fbindproducer)
     
-install(TARGETS fbindproducer DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+install(TARGETS fbindproducer EXPORT fproducer-consumer PUBLIC_HEADER LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
 

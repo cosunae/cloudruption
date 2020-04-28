@@ -59,6 +59,7 @@ if(ENABLE_PRODUCER)
     KafkaProducer.h
   )
   add_library(kafkaproducer ${KAFKAPROD_SRC})
+  set_target_properties(kafkaproducer PROPERTIES PUBLIC_HEADER "KafkaProducer.h")
   target_include_directories(kafkaproducer SYSTEM PUBLIC ${RDKAFKA_INCLUDE_DIRS})
   target_link_libraries(kafkaproducer ${RDKAFKA_LIBRARIES})
 
@@ -84,12 +85,14 @@ if(ENABLE_PRODUCER)
   target_link_libraries(bindproducer PUBLIC kafkaproducer)
   target_link_libraries(bindproducer INTERFACE stdc++)
 
-  install(TARGETS kafkaproducer bindproducer EXPORT producer-consumer LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+  install(TARGETS kafkaproducer bindproducer EXPORT producer-consumer PUBLIC_HEADER LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
   install(TARGETS producer DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 
 
   if(ENABLE_FORTRAN)
     add_library(fbindproducer interface/bindproducer.f90 interface/bind_data.f90)
+    set_target_properties(fbindproducer PROPERTIES PUBLIC_HEADER "interface/bindproducer.mod;interface/bind_data.mod")
+
     target_link_libraries(fbindproducer INTERFACE bindproducer)
     add_executable(testBindings test/testBindings.f90)
     target_compile_options(testBindings PUBLIC -cpp)
@@ -102,7 +105,7 @@ if(ENABLE_PRODUCER)
 
     target_link_libraries(testBindings PRIVATE fbindproducer)
     
-    install(TARGETS fbindproducer EXPORT fproducer-consumer LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+    install(TARGETS fbindproducer EXPORT fproducer-consumer PUBLIC_HEADER LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
 
   endif(ENABLE_FORTRAN)
 
