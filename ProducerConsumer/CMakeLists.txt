@@ -10,6 +10,7 @@ option(ENABLE_FORTRAN OFF)
 if(ENABLE_MPI)
   if(ENABLE_FORTRAN)
     find_package(MPI COMPONENTS CXX Fortran REQUIRED)
+    set(CMAKE_Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/Fortran)
   else()
     find_package(MPI COMPONENTS CXX REQUIRED)
   endif()
@@ -91,7 +92,6 @@ if(ENABLE_PRODUCER)
 
   if(ENABLE_FORTRAN)
     add_library(fbindproducer interface/bindproducer.f90 interface/bind_data.f90)
-    set_target_properties(fbindproducer PROPERTIES PUBLIC_HEADER "interface/bindproducer.mod;interface/bind_data.mod")
 
     target_link_libraries(fbindproducer INTERFACE bindproducer)
     add_executable(testBindings test/testBindings.f90)
@@ -106,6 +106,8 @@ if(ENABLE_PRODUCER)
     target_link_libraries(testBindings PRIVATE fbindproducer)
     
     install(TARGETS fbindproducer EXPORT fproducer-consumer PUBLIC_HEADER LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
+
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/Fortran DESTINATION include/)
 
   endif(ENABLE_FORTRAN)
 
