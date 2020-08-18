@@ -5,7 +5,7 @@ module bind_data
     
     type, bind(c) :: fKeyMessage
       integer(c_int) :: actionType
-      character(kind=c_char, len=32) :: key
+      character(kind=c_char) :: key(32)
       integer(c_int) :: npatches
       integer(c_int) :: myrank
       integer(c_size_t) :: datetime
