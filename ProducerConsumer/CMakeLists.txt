@@ -126,10 +126,11 @@ install(TARGETS consumer DESTINATION ${CMAKE_INSTALL_PREFIX}/bin/)
 pybind11_add_module(fieldop fieldop.cpp DistributedField.cpp field.cpp)
 pybind11_add_module(testfieldop test/testfieldop.cpp)
 
-
-install(EXPORT producer-consumer DESTINATION cmake NAMESPACE pc:: FILE producer-consumer-config.cmake)
-if(ENABLE_FORTRAN)
-  install(EXPORT fproducer-consumer DESTINATION cmake NAMESPACE pc::)
+if(ENABLE_PRODUCER)
+  install(EXPORT producer-consumer DESTINATION cmake NAMESPACE pc:: FILE producer-consumer-config.cmake)
+  if(ENABLE_FORTRAN)
+    install(EXPORT fproducer-consumer DESTINATION cmake NAMESPACE pc::)
+  endif()
 endif()
 
 #install(TARGETS ${python_libname} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
