@@ -68,7 +68,7 @@ void KafkaProducer::produce(KeyMessage key, float *data, size_t datasize,
 
     std::string topic = std::string("cosmo_") + fieldname;
 
-    std::cout << "Producing on topic :" << topic << ", " << key.key << ":" << key.npatches << "," << data << "," << datasize << " -> " << producer_ << std::endl;
+    std::cout << "Producing on topic :" << topic << ", key: " << key.key << ", patches: " << key.npatches << ", data: " << data << ", size: " << datasize << " -> " << producer_ << std::endl;
 
     RdKafka::ErrorCode resp = producer_->produce(
         topic, partition_, RdKafka::Producer::RK_MSG_COPY /* Copy payload */,

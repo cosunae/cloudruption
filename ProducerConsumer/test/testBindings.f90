@@ -32,6 +32,8 @@ include 'mpif.h'
   integer :: i,j,k, levlen
   
   integer :: ierror, mpisize, mpirank, nx, ny, px, py
+  CHARACTER(len=255) :: kafkabroker
+
   
 #ifdef ENABLE_MPI
   call mpi_init(ierror)
@@ -71,7 +73,9 @@ include 'mpif.h'
       enddo
     enddo
   enddo
-  producer = bind_create_producer("localhost:9092")
+  CALL get_environment_variable("KAFKABROKER", kafkabroker)
+
+  producer = bind_create_producer(TRIM(kafkabroker))
 
 #ifdef ENABLE_MPI
   npatches = mpisize
