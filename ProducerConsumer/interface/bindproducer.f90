@@ -30,7 +30,7 @@ subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetim
     use iso_c_binding
     type(c_ptr), value, intent(in) :: producer
     real(c_float), pointer :: field(:,:,:)
-    character(kind=c_char, len=32), intent(in) :: fieldname
+    character(kind=c_char, len=1), intent(in) :: fieldname(32)
     integer(c_int), intent(in) :: npatches
     integer(c_int), intent(in) :: myrank
     integer(c_size_t), intent(in) :: datetime
@@ -78,7 +78,7 @@ subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetim
         use iso_c_binding
         type(c_ptr), value, intent(in) :: producer
         real(c_float), pointer :: field(:,:)
-        character(kind=c_char, len=32), intent(in) :: fieldname
+        character(kind=c_char, len=1), intent(in) :: fieldname(32)
         integer(c_int), intent(in) :: npatches
         integer(c_int), intent(in) :: myrank
         integer(c_size_t), intent(in) :: datetime
