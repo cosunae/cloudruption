@@ -96,7 +96,9 @@ class DataRegistry:
         self.subscribe(userdatareqs)
 
     def complete(self):
+        print("CHECKING COMP")
         for groupId, group in enumerate(self.groupRequests_):
+            print("  in group ", groupId)
             #print("check completeness of group", groupId, )
             reqHandle = self.completeg(groupId)
             if reqHandle:
@@ -118,7 +120,9 @@ class DataRegistry:
     def completeg(self, groupId):
         groupRequest = self.groupRequests_[groupId]
 
+        print(" ff ", groupRequest.timeDataRequests_)
         for timestamp in groupRequest.timeDataRequests_:
+            print("   for t: ", timestamp)
             requestHandle = self.completegt(groupId, timestamp)
             if requestHandle:
                 return requestHandle
@@ -262,6 +266,7 @@ class DataRegistryStreaming(DataRegistry):
             sys.exit(1)
             return -1
 
+        print(" IN POOLL")
         dt = np.dtype('<f4')
         al = np.frombuffer(msg.value(), dtype=dt)
 
@@ -276,6 +281,7 @@ class DataRegistryStreaming(DataRegistry):
             requestHandle = DataRegistry.subscribeIfNotExists(self, msKey.key)
             assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
+            print("testing ", msKey.key, [x.name for x in groupRequests.reqFields_])
             if msKey.key in [x.name for x in groupRequests.reqFields_]:
                 field = msKey.key
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,

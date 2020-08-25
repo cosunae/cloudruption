@@ -360,7 +360,7 @@ if __name__ == '__main__':
 
         reg.subscribe([data.UserDataReq(field, None)])
 
-        return True, "subscribed to " + topics_data[cidx]['topics']
+        return True, "subscribed to " + topics_data[cidx]['topics'] +"..."+ field
 
     @app.callback(
         [Output('plot-container', 'children'),
