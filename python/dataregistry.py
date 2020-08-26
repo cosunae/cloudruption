@@ -265,7 +265,7 @@ class DataRegistryStreaming(DataRegistry):
             sys.exit(1)
             return -1
 
-        versboeprint("polling")
+        verboseprint("polling")
         dt = np.dtype('<f4')
         al = np.frombuffer(msg.value(), dtype=dt)
 
