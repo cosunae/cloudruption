@@ -12,8 +12,12 @@ RUN mkdir ~/temp && cd ~/temp && \
     cd cmake-3.16.5/ && export CC=gcc-8 && export  CXX=g++-8 && ./bootstrap && make -j4 && make install
 
 RUN pip3 install wheel
+RUN pip3 install numpy
+#RUN apt-get install -y llvm-10 llvm-10-runtime
+#Numba pip install not working, temporarily disabled it
+#RUN export LLVM_CONFIG=`which llvm-config-10` && export CXX=g++-8 && pip3 install numba
 RUN pip3 install dash pandas squarify boto3 anytree confluent_kafka dash_treeview_antd sd_material_ui \
-    dataclasses matplotlib netcdf4 pyyaml portion numba flask_caching filelock 
+    dataclasses matplotlib netcdf4 pyyaml portion flask_caching filelock 
 
 WORKDIR /home/
 
@@ -33,8 +37,9 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
 #invalidate the cache when the head of the repo changes
 ADD https://api.github.com/repos/cosunae/cloudruption/git/refs/heads/master version.json
 RUN git clone https://github.com/cosunae/cloudruption.git 
-RUN cd  /home/cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && \
-    rm -rf build && mkdir build  && cd build &&  cmake  -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
+RUN apt-get install -y gfortran-8
+RUN cd  /home/cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && export FC=gfortran-8 && \
+    rm -rf build && mkdir build  && cd build &&  cmake  -DENABLE_FORTRAN=OFF -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
     make -j3 && \
     export eccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ && \
     cd /home/cloudruption/ProducerConsumer && pip3 install .
