@@ -75,7 +75,8 @@ class RequestHandle:
 @dataclass
 class DataRegistry:
 
-    def __init__(self):
+    def __init__(self, verboseprint):
+        self.verboseprint_ = verboseprint
         self.groupRequests_ = []
         self.registerAll_ = False
 
@@ -96,10 +97,9 @@ class DataRegistry:
         self.subscribe(userdatareqs)
 
     def complete(self):
-        print("CHECKING COMP")
+        verboseprint("checking completeness of data request groups:")
         for groupId, group in enumerate(self.groupRequests_):
-            print("  in group ", groupId)
-            #print("check completeness of group", groupId, )
+            verboseprint("   ... in group ", groupId)
             reqHandle = self.completeg(groupId)
             if reqHandle:
                 return reqHandle
@@ -110,9 +110,9 @@ class DataRegistry:
         groupRequest = self.groupRequests_[groupId]
 
         dataRequestDict = groupRequest.timeDataRequests_[timestamp]
-        print("checking for completeness of groupd/timestamp", groupId, timestamp)
+        verboseprint("   ... checking for completeness of groupid/timestamp", groupId, "/", timestamp)
         for field in [x.name for x in groupRequest.reqFields_]:
-            print(" ... checking field", field)
+            verboseprint("      ... checking field", field)
             if not dataRequestDict.get(field, NullRequest()).complete():
                 return None
         return RequestHandle(groupId, timestamp)
@@ -120,9 +120,8 @@ class DataRegistry:
     def completeg(self, groupId):
         groupRequest = self.groupRequests_[groupId]
 
-        print(" ff ", groupRequest.timeDataRequests_)
         for timestamp in groupRequest.timeDataRequests_:
-            print("   for t: ", timestamp)
+            verboseprint("   ... checking timestamp:", timestamp)
             requestHandle = self.completegt(groupId, timestamp)
             if requestHandle:
                 return requestHandle
@@ -142,8 +141,8 @@ class DataRegistry:
             requestHandle.groupId_].timeDataRequests_[requestHandle.timestamp_]
 
         for field in datareqs:
-            print("GATHERING ", field, requestHandle.groupId_,
-                  requestHandle.timestamp_)
+            verboseprint("gathering field/groupid/timestamp: ", field, "/", requestHandle.groupId_,
+                  "/", requestHandle.timestamp_)
 
             dataReq = datareqs[field]
             df = fieldop.DistributedField(
@@ -163,7 +162,7 @@ class DataRegistry:
         return
 
     def cleanTimestamp(self, requestHandle):
-        print("Deleting timestamp ", requestHandle.groupId_,
+        verboseprint("Deleting timestamp ", requestHandle.groupId_,
               requestHandle.timestamp_)
         if requestHandle.timestamp_ in self.groupRequests_[requestHandle.groupId_].timeDataRequests_:
             del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[
@@ -234,13 +233,13 @@ def get_key(msg):
 
 
 class DataRegistryStreaming(DataRegistry):
-    def __init__(self, broker='localhost:9092', group="group1"):
+    def __init__(self, broker='localhost:9092', group="group1", verboseprint=print):
         self.c_ = Consumer({
             'bootstrap.servers': broker,
             'group.id': group,
             'auto.offset.reset': 'earliest'
         })
-        DataRegistry.__init__(self)
+        DataRegistry.__init__(self, verboseprint)
 
     def __del__(self):
         self.c_.close()
@@ -250,10 +249,10 @@ class DataRegistryStreaming(DataRegistry):
             self, userDataReqs=userDataReqs, registerall=registerall)
 
         if registerall:
-            print("SUBSCRIBING TO ^cosmo_.*")
+            verboseprint("SUBSCRIBING TO ^cosmo_.*")
             self.c_.subscribe(["^cosmo_.*"])
         else:
-            print("SUBSCRIBING TO ", ["cosmo_"+x.name for x in userDataReqs])
+            verboseprint("SUBSCRIBING TO ", ["cosmo_"+x.name for x in userDataReqs])
             self.c_.subscribe(["cosmo_"+x.name for x in userDataReqs])
 
     def poll(self, seconds):
@@ -266,7 +265,7 @@ class DataRegistryStreaming(DataRegistry):
             sys.exit(1)
             return -1
 
-        print(" IN POOLL")
+        versboeprint("polling")
         dt = np.dtype('<f4')
         al = np.frombuffer(msg.value(), dtype=dt)
 
@@ -281,7 +280,7 @@ class DataRegistryStreaming(DataRegistry):
             requestHandle = DataRegistry.subscribeIfNotExists(self, msKey.key)
             assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
-            print("testing ", msKey.key, [x.name for x in groupRequests.reqFields_])
+            verboseprint("checking a message with key ", msKey.key, " among requests of fields:", [x.name for x in groupRequests.reqFields_])
             if msKey.key in [x.name for x in groupRequests.reqFields_]:
                 field = msKey.key
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,

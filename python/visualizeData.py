@@ -47,9 +47,11 @@ class NoValidKafkaBroker(Exception):
 print("****************************************************")
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='toNetCDF')
-    parser.add_argument('--file', help='grib/netcdf filename')
+    parser.add_argument('-v', default=False, action='store_true') 
 
     args = parser.parse_args()
+
+    verboseprint = print if args.v else lambda *a, **k: None
 
     app = dash.Dash()
 
@@ -232,7 +234,8 @@ if __name__ == '__main__':
 
                 fields = [x.name for x in reg.groupRequests_[
                     reqHandle.groupId_].reqFields_]
-                print('Completed ', fields)
+
+                verboseprint('list of (complete) collected fields: ', fields)
                 for field in fields:
                     datadesc = datapool[timestamp][field].datadesc_
 
