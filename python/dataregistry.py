@@ -97,9 +97,9 @@ class DataRegistry:
         self.subscribe(userdatareqs)
 
     def complete(self):
-        verboseprint("checking completeness of data request groups:")
+        self.verboseprint_("checking completeness of data request groups:")
         for groupId, group in enumerate(self.groupRequests_):
-            verboseprint("   ... in group ", groupId)
+            self.verboseprint_("   ... in group ", groupId)
             reqHandle = self.completeg(groupId)
             if reqHandle:
                 return reqHandle
@@ -110,9 +110,9 @@ class DataRegistry:
         groupRequest = self.groupRequests_[groupId]
 
         dataRequestDict = groupRequest.timeDataRequests_[timestamp]
-        verboseprint("   ... checking for completeness of groupid/timestamp", groupId, "/", timestamp)
+        self.verboseprint_("   ... checking for completeness of groupid/timestamp", groupId, "/", timestamp)
         for field in [x.name for x in groupRequest.reqFields_]:
-            verboseprint("      ... checking field", field)
+            self.verboseprint_("      ... checking field", field)
             if not dataRequestDict.get(field, NullRequest()).complete():
                 return None
         return RequestHandle(groupId, timestamp)
@@ -121,7 +121,7 @@ class DataRegistry:
         groupRequest = self.groupRequests_[groupId]
 
         for timestamp in groupRequest.timeDataRequests_:
-            verboseprint("   ... checking timestamp:", timestamp)
+            self.verboseprint_("   ... checking timestamp:", timestamp)
             requestHandle = self.completegt(groupId, timestamp)
             if requestHandle:
                 return requestHandle
@@ -141,7 +141,7 @@ class DataRegistry:
             requestHandle.groupId_].timeDataRequests_[requestHandle.timestamp_]
 
         for field in datareqs:
-            verboseprint("gathering field/groupid/timestamp: ", field, "/", requestHandle.groupId_,
+            self.verboseprint_("gathering field/groupid/timestamp: ", field, "/", requestHandle.groupId_,
                   "/", requestHandle.timestamp_)
 
             dataReq = datareqs[field]
@@ -162,7 +162,7 @@ class DataRegistry:
         return
 
     def cleanTimestamp(self, requestHandle):
-        verboseprint("Deleting timestamp ", requestHandle.groupId_,
+        self.verboseprint_("Deleting timestamp ", requestHandle.groupId_,
               requestHandle.timestamp_)
         if requestHandle.timestamp_ in self.groupRequests_[requestHandle.groupId_].timeDataRequests_:
             del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[
@@ -249,10 +249,10 @@ class DataRegistryStreaming(DataRegistry):
             self, userDataReqs=userDataReqs, registerall=registerall)
 
         if registerall:
-            verboseprint("SUBSCRIBING TO ^cosmo_.*")
+            self.verboseprint_("SUBSCRIBING TO ^cosmo_.*")
             self.c_.subscribe(["^cosmo_.*"])
         else:
-            verboseprint("SUBSCRIBING TO ", ["cosmo_"+x.name for x in userDataReqs])
+            self.verboseprint_("SUBSCRIBING TO ", ["cosmo_"+x.name for x in userDataReqs])
             self.c_.subscribe(["cosmo_"+x.name for x in userDataReqs])
 
     def poll(self, seconds):
@@ -265,7 +265,7 @@ class DataRegistryStreaming(DataRegistry):
             sys.exit(1)
             return -1
 
-        verboseprint("polling")
+        self.verboseprint_("polling")
         dt = np.dtype('<f4')
         al = np.frombuffer(msg.value(), dtype=dt)
 
@@ -280,7 +280,7 @@ class DataRegistryStreaming(DataRegistry):
             requestHandle = DataRegistry.subscribeIfNotExists(self, msKey.key)
             assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
-            verboseprint("checking a message with key ", msKey.key, " among requests of fields:", [x.name for x in groupRequests.reqFields_])
+            self.verboseprint_("checking a message with key ", msKey.key, " among requests of fields:", [x.name for x in groupRequests.reqFields_])
             if msKey.key in [x.name for x in groupRequests.reqFields_]:
                 field = msKey.key
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,
