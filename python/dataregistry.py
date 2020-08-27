@@ -228,7 +228,7 @@ def get_key(msg):
     stringlist = ''.join([x.decode('utf-8') for x in c1[1:33]])
     allargs = list(c1[0:1]) + [stringlist] + list(c1[33:])
     key = data.MsgKey(*allargs)
-    key.key = key.key.rstrip()
+    key.key = key.key.rstrip().rstrip('\x00')
     return key
 
 
@@ -280,8 +280,8 @@ class DataRegistryStreaming(DataRegistry):
             requestHandle = DataRegistry.subscribeIfNotExists(self, msKey.key)
             assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
-            self.verboseprint_("checking a message with key ", msKey.key, msKey.key.strip()," among requests of fields:", [x.name for x in groupRequests.reqFields_])
-            if msKey.key in [x.name for x in groupRequests.reqFields_]:
+            self.verboseprint_("checking a message with key ", msKey.key, msKey.key.strip('\x00')," among requests of fields:", [x.name for x in groupRequests.reqFields_])
+            if msKey.key.strip('\x00') in [x.name for x in groupRequests.reqFields_]:
                 self.verboseprint_(" ... inserting data patch:",msKey.key.strip())
                 field = msKey.key
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,
