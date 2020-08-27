@@ -54,5 +54,5 @@ RUN mkdir /root/.aws/
 #ADD credentials /root/.aws/credentials
 
 EXPOSE 3001
-ENTRYPOINT ["/home/cloudruption/python/visualizeData.py"]
+ENTRYPOINT ["/home/cloudruption/python/visualizeData.py","-v"]
 #ENTRYPOINT ["/bin/bash"]
