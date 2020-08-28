@@ -6,31 +6,56 @@ implicit none
 
 interface
 
-    type(c_ptr) function bind_create_producer(broker) bind(c, name='create_producer')
+    type(c_ptr) function bind_create_producer_impl(broker, product) bind(c, name='create_producer')
         use iso_c_binding
-        character(kind=c_char), intent(in) :: broker
+        character(kind=c_char), intent(in) :: broker(*)
+        character(kind=c_char), intent(in) :: product(*)
     end function
 
-    subroutine bind_produce_impl(producer, key, data, datasize, fieldname) bind(c, name='produce')
+    subroutine bind_produce_impl(producer, key, data, datasize, topic) bind(c, name='produce')
         use iso_c_binding
         import fKeyMessage
         type(c_ptr), value, intent(in) :: producer
         type(fKeyMessage), intent(in) :: key
         type(c_ptr), value, intent(in) :: data
         integer(c_size_t), intent(in):: datasize
-        character(kind=c_char), intent(in) :: fieldname(*)
+        character(kind=c_char), intent(in) :: topic(*)
     end subroutine
 
 end interface
 
 contains 
+
+pure function f_c_string_func (f_string) result (c_string)
+  use, intrinsic :: iso_c_binding, only: c_char, c_null_char
+  implicit none
+  character(len=*), intent(in) :: f_string
+  character(len=1, kind=c_char) :: c_string(len_trim(f_string)+1)
+  integer :: n,i
+
+  n = len_trim(f_string)
+  do i =1, n
+    c_string(i) = f_string(i:i)
+  end do
+  c_string(n+1) = c_null_char
+end function f_c_string_func
+
+function bind_create_producer(broker, product) result(producer)
+    use iso_c_binding
+    character(kind=c_char, len=*), intent(in) :: broker
+    character(kind=c_char, len=*), intent(in) :: product
+    type(c_ptr) :: producer
+
+    producer = bind_create_producer_impl(f_c_string_func(broker), f_c_string_func(product))
+end function
+
 subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetime, &
     ilonstart, jlatstart, totlonlen, totlatlen,                  &
     longitudeOfFirstGridPoint, longitudeOfLastGridPoint, latitudeOfFirstGridPoint, latitudeOfLastGridPoint)
     use iso_c_binding
     type(c_ptr), value, intent(in) :: producer
     real(c_float), pointer :: field(:,:,:)
-    character(kind=c_char, len=1), intent(in) :: fieldname(32)
+    character(kind=c_char, len=*), intent(in) :: fieldname
     integer(c_int), intent(in) :: npatches
     integer(c_int), intent(in) :: myrank
     integer(c_size_t), intent(in) :: datetime
@@ -67,7 +92,7 @@ subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetim
   
     do k=1, size(field,3)
         keyMsg%lev = k-1
-        call bind_produce_impl(producer, keyMsg, c_loc(field(:,:,k)), datasize, fieldname)
+        call bind_produce_impl(producer, keyMsg, c_loc(field(:,:,k)), datasize, f_c_string_func(fieldname))
     enddo 
 
     end subroutine
@@ -78,7 +103,7 @@ subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetim
         use iso_c_binding
         type(c_ptr), value, intent(in) :: producer
         real(c_float), pointer :: field(:,:)
-        character(kind=c_char, len=1), intent(in) :: fieldname(32)
+        character(kind=c_char, len=*), intent(in) :: fieldname
         integer(c_int), intent(in) :: npatches
         integer(c_int), intent(in) :: myrank
         integer(c_size_t), intent(in) :: datetime
@@ -111,7 +136,7 @@ subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetim
         keyMsg%latitudeOfFirstGridPoint=latitudeOfFirstGridPoint
         keyMsg%latitudeOfLastGridPoint=latitudeOfLastGridPoint
       
-        call bind_produce_impl(producer, keyMsg, c_loc(field(:,:)), datasize, fieldname)
+        call bind_produce_impl(producer, keyMsg, c_loc(field(:,:)), datasize, f_c_string_func(fieldname))
     
     end subroutine
     

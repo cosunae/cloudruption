@@ -924,7 +924,7 @@ int main(int argc, char **argv)
 
   for (auto file : files)
   {
-    KafkaProducer producer(config.get<std::string>("kafkabroker"));
+    KafkaProducer producer(config.get<std::string>("kafkabroker"), config.get<std::string>("product"));
 
     GribDecoder gribDecoder(myrank, mpisize, file);
     gribDecoder.decode(producer, config.get<std::string>("parsegrib"));

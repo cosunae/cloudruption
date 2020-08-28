@@ -4,6 +4,7 @@
     "files": [
         "/data/cosmo-7/laf2018020200"
     ],
+    "product": "postproc",
     "topics": [
         "T",
         "U",

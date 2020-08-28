@@ -1,8 +1,8 @@
 #include "KafkaProducer.h"
 
-KafkaProducer::KafkaProducer(std::string broker)
+KafkaProducer::KafkaProducer(std::string broker, std::string product)
     : conf_(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL)),
-      broker_(broker)
+      broker_(broker), product_(product)
 {
     std::string errstr;
 
@@ -66,7 +66,7 @@ void KafkaProducer::produce(KeyMessage key, float *data, size_t datasize,
      * Produce message
      */
 
-    std::string topic = std::string("cosmo_") + fieldname;
+    std::string topic = product_.empty() ? fieldname : product_ + "_" + fieldname;
 
     std::cout << "Producing on topic :" << topic << ", key: " << key.key << ", patches: " << key.npatches << ", data: " << data << ", size: " << datasize << " -> " << producer_ << std::endl;
 

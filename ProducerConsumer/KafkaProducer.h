@@ -74,18 +74,15 @@ class KafkaProducer
     RdKafka::Conf *conf_;
     const int32_t partition_ = RdKafka::Topic::PARTITION_UA;
     const std::string broker_;
+    const std::string product_;
 
     RdKafka::Producer *producer_;
     ExampleDeliveryReportCb ex_dr_cb_;
     ExampleEventCb ex_event_cb_;
 
 public:
-    KafkaProducer(std::string broker = "localhost:9092");
+    KafkaProducer(std::string broker = "localhost:9092", std::string product = "");
 
-    void test()
-    {
-        std::cout << " TEST " << producer_ << std::endl;
-    }
     void produce(KeyMessage key, float *data, size_t datasize,
                  std::string fieldname) const;
 };

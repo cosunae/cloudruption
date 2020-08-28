@@ -140,6 +140,7 @@ def launchProducer(kafka_broker, filename):
     jdata['parsegrib'] = pgrib
     jdata['lockfile'] = str(lockf)
     jdata['files'] = [localfile]
+    jdata['product'] = "pp"
 
     tconfig = tmpdir / filenameflat.with_suffix(".configtmp.json")
     jfile = open(tconfig, "w")
