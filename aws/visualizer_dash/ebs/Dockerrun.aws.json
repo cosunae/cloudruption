@@ -1,7 +1,7 @@
 {
   "AWSEBDockerrunVersion": "1",
   "Image": {
-    "Name": "066650776666.dkr.ecr.eu-central-1.amazonaws.com/cr-visualizer:v1.0.18",
+    "Name": "066650776666.dkr.ecr.eu-central-1.amazonaws.com/cr-visualizer:v1.0.19",
     "Update": "true"
   },
   "Ports": [

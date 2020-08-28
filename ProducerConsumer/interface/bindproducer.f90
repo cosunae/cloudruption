@@ -73,7 +73,7 @@ subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetim
     levlen = size(field,3)
 
     keyMsg%actionType = 1
-    keyMsg%key=fieldname
+    keyMsg%key=f_c_string_func(fieldname)
     keyMsg%npatches = npatches
     keyMsg%myrank=myrank
     keyMsg%datetime=datetime
@@ -119,7 +119,7 @@ subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetim
     
 
         keyMsg%actionType = 1
-        keyMsg%key=fieldname
+        keyMsg%key=f_c_string_func(fieldname)
         keyMsg%npatches = npatches
         keyMsg%myrank=myrank
         keyMsg%datetime=datetime
