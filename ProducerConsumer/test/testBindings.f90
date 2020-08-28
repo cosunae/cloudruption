@@ -75,7 +75,7 @@ include 'mpif.h'
   enddo
   CALL get_environment_variable("KAFKABROKER", kafkabroker)
 
-  producer = bind_create_producer(TRIM(kafkabroker))
+  producer = bind_create_producer(TRIM(kafkabroker), "ftest")
 
 #ifdef ENABLE_MPI
   npatches = mpisize
