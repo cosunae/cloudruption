@@ -94,7 +94,7 @@ class DataRegistry:
                         *([float(x) for x in fieldval['region']['cuboid']['hregion'].split(',')]))
             userdatareqs.append(data.UserDataReq(field, datareqdesc))
 
-        self.subscribe(userdatareqs)
+        self.subscribe("file_",userdatareqs)
 
     def complete(self):
         self.verboseprint_("checking completeness of data request groups:")
@@ -177,19 +177,19 @@ class DataRegistry:
                 return RequestHandle(groupId, None)
         return DataRegistry.createNewGroupRequest(self, [data.UserDataReq(topic, None)])
 
-    def subscribe(self, userDataReqs):
+    def subscribe(self, topicPrefix, userDataReqs):
         if len(userDataReqs) > 1:
             for field in [x.name for x in userDataReqs]:
                 if field.find('*') != -1:
                     raise RuntimeError(
                         "If wildcard is used, only one field (.*) can be declared:", field)
 
-            self.subscribeImpl(userDataReqs=userDataReqs, registerall=False)
+            self.subscribeImpl(topicPrefix, userDataReqs=userDataReqs, registerall=False)
         else:
             if userDataReqs[0].name == ".*":
-                self.subscribeImpl(userDataReqs=userDataReqs, registerall=True)
+                self.subscribeImpl(topicPrefix, userDataReqs=userDataReqs, registerall=True)
             else:
-                self.subscribeImpl(
+                self.subscribeImpl(topicPrefix,  
                     userDataReqs=userDataReqs, registerall=False)
 
     def subscribeImpl(self, *, userDataReqs, registerall: bool):
@@ -244,16 +244,16 @@ class DataRegistryStreaming(DataRegistry):
     def __del__(self):
         self.c_.close()
 
-    def subscribeImpl(self, *, userDataReqs, registerall):
+    def subscribeImpl(self, topicPrefix, *, userDataReqs, registerall):
         DataRegistry.subscribeImpl(
             self, userDataReqs=userDataReqs, registerall=registerall)
 
         if registerall:
-            self.verboseprint_("SUBSCRIBING TO ^cosmo_.*")
-            self.c_.subscribe(["^cosmo_.*"])
+            self.verboseprint_("SUBSCRIBING TO ^"+topicPrefix+".*")
+            self.c_.subscribe(["^"+topicPrefix+".*"])
         else:
-            self.verboseprint_("SUBSCRIBING TO ", ["cosmo_"+x.name for x in userDataReqs])
-            self.c_.subscribe(["cosmo_"+x.name for x in userDataReqs])
+            self.verboseprint_("SUBSCRIBING TO ", [topicPrefix+x.name for x in userDataReqs])
+            self.c_.subscribe([topicPrefix+x.name for x in userDataReqs])
 
     def poll(self, seconds):
         msg = self.c_.poll(seconds)
@@ -347,7 +347,7 @@ class DataRegistryFile(DataRegistry):
         self.npart_ = [2, 3]
         DataRegistry.__init__(self)
 
-    def subscribeImpl(self, *, userDataReqs, registerall):
+    def subscribeImpl(self, topicPrefix, *, userDataReqs, registerall):
         requestHandle = DataRegistry.subscribeImpl(
             self, userDataReqs=userDataReqs, registerall=registerall)
         self.sendGribData(requestHandle=requestHandle,

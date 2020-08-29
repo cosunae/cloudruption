@@ -58,3 +58,6 @@ class DataPool:
     def insert(self, timestamp, fieldname, field, datadesc):
         self.data_.setdefault(timestamp, {})[
             fieldname] = FieldObject(field, datadesc)
+
+    def timestamps(self):
+        return self.data_.keys()

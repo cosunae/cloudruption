@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import time
+import re
 import struct
 import numpy as np
 import string
@@ -47,7 +48,7 @@ class NoValidKafkaBroker(Exception):
 print("****************************************************")
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='toNetCDF')
-    parser.add_argument('-v', default=False, action='store_true') 
+    parser.add_argument('-v', default=False, action='store_true')
 
     args = parser.parse_args()
 
@@ -66,9 +67,6 @@ if __name__ == '__main__':
     cache = Cache()
     cache.init_app(app.server, config=CACHE_CONFIG)
 
-    # structure of type
-    # [ {"timestamp": 1583230879, "fields": [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]}]
-    listCompletedFields = []
     datapool = data.DataPool()
     reg = None
 
@@ -95,7 +93,7 @@ if __name__ == '__main__':
                 min=0,
                 max=0,
                 marks={-1: "null"},
-                value=0
+                value=-1
             ),
             html.Div([
                 html.Div(id='plot-container', className="topmargin_box"),
@@ -183,33 +181,35 @@ if __name__ == '__main__':
         )
     ], className="row flex-display",)
 
-    def computeOutput(listCompletedFields):
-        # timestampfields
-        # [fieldwrap("name", is2d=True)]
+    def computeOutput(datapool):
+
+        list2dFields = []
+        list3dFields = []
+        for timestamp in datapool.timestamps():
+            for fieldname in datapool[timestamp]:
+                if datapool[timestamp][fieldname].datadesc_.levlen == 1:
+                    list2dFields.append(fieldname)
+                else:
+                    list3dFields.append(fieldname)
+
+        # remove duplicates
+        list2dFields = list(dict.fromkeys(list2dFields))
+        list3dFields = list(dict.fromkeys(list3dFields))
+
         fdict = []
-        mint = 0
-        maxt = len(listCompletedFields)-1
 
-        for tlist in listCompletedFields:
-            timestamp = tlist["timestamp"]
-            timestampfields = tlist["fields"]
+        for f2, f3 in itertools.zip_longest(list2dFields, list3dFields):
+            elemdict = {}
+            if f2:
+                elemdict["2d_field"] = f2
+            if f3:
+                elemdict["3d_field"] = f3
 
-            list2dFields = [x.name for x in timestampfields if x.is2d]
-            list3dFields = [x.name for x in timestampfields if not x.is2d]
+            fdict.append(elemdict)
 
-            for f2, f3 in itertools.zip_longest(list2dFields, list3dFields):
-                elemdict = {}
-                if f2:
-                    elemdict["2d_field"] = f2
-                if f3:
-                    elemdict["3d_field"] = f3
-
-                fdict.append(elemdict)
-
-        return [fdict, mint, maxt, {i: str(i) for i in range(0, len(listCompletedFields)-1)}]
+        return fdict
 
     def processCompletedFields():
-        global listCompletedFields
         global reg
 
         for i in range(3):
@@ -217,32 +217,10 @@ if __name__ == '__main__':
 
             reqHandle = reg.complete()
             if reqHandle:
-                timestamp = reqHandle.timestamp_
-
                 reg.gatherField(reqHandle, datapool)
-
-                allTimestamps = [x["timestamp"] for x in listCompletedFields]
-                if reqHandle.timestamp_ not in allTimestamps:
-                    listCompletedFields.append(
-                        {"timestamp": reqHandle.timestamp_})
-                    tCompletedFields = listCompletedFields[-1].setdefault(
-                        "fields", [])
-                else:
-                    # find the timestamp element
-                    tCompletedFields = next(
-                        x["fields"] for x in listCompletedFields if x["timestamp"] == reqHandle.timestamp_)
-
                 fields = [x.name for x in reg.groupRequests_[
                     reqHandle.groupId_].reqFields_]
-
                 verboseprint('list of (complete) collected fields: ', fields)
-                for field in fields:
-                    datadesc = datapool[timestamp][field].datadesc_
-
-                    is2d = True if datadesc.levlen == 1 else False
-                    if field not in [p.name for p in tCompletedFields]:
-                        tCompletedFields.append(fieldwrap(field, is2d))
-        return computeOutput(listCompletedFields)
 
     @app.callback([dash.dependencies.Output('snackbar-kafka', 'open'),
                    dash.dependencies.Output('snackbar-kafka', 'message'), dash.dependencies.Output('kafka_broker_title', 'children')],
@@ -298,12 +276,11 @@ if __name__ == '__main__':
                       'kafka-submit-buttom', 'n_clicks')]
                   )
     def update_data_collected(n, kafka_broker, n_clicks):
-        global listCompletedFields
         # kafka broker not set yet
         if n_clicks == 0:
             raise PreventUpdate
 
-        data, min, max, slmarks = computeOutput(listCompletedFields)
+        data = computeOutput(datapool)
 
         return [data]
 
@@ -323,25 +300,14 @@ if __name__ == '__main__':
         try:
             filename = "___lockfile." + '.lock'
             with FileLock(filename):
-                data, min, max, slmarks = processCompletedFields()
+                processCompletedFields()
         except Exception as ex:
             print("Error", ex)
             raise PreventUpdate
         return ['']
-        return [data]
-        return data, min, max, slmarks
 
-    def getFieldnameFromList(fieldIs2d, listFields, elementid):
-        # listFields in format [fieldwrap("U",False),fieldwrap("V",False), fieldwrap("TMIN_2M", True)]
-        cnt = 0
-        for f in listFields:
-            if f.is2d != fieldIs2d:
-                continue
-            if cnt == elementid:
-                return f.name
-            cnt += 1
-
-        return None
+    def findTimestampsWithField(datapool, fieldname):
+        return [tstamp for tstamp in datapool.timestamps() if fieldname in datapool[tstamp]]
 
     @app.callback([dash.dependencies.Output('snackbar-selecttopic', 'open'),
                    dash.dependencies.Output('snackbar-selecttopic', 'message')], [Input('topics-table', 'active_cell'),
@@ -358,38 +324,42 @@ if __name__ == '__main__':
             print("Error: selected cell does not exists in data table")
             raise PreventUpdate
 
-        field = topics_data[cidx]['topics'].replace('cosmo_', '')
+        topic = topics_data[cidx]['topics']
+        topicPrefix = re.findall(r'.*?_', topic)[0]
+        field = re.sub(topicPrefix, "", topic)
 
-        reg.subscribe([data.UserDataReq(field, None)])
+        reg.subscribe(topicPrefix, [data.UserDataReq(field, None)])
 
-        return True, "subscribed to " + topics_data[cidx]['topics']
+        return True, "subscribed to " + field
 
     @app.callback(
         [Output('plot-container', 'children'),
          Output('level-slider', 'max'),
-         Output('level-slider', 'marks')
+         Output('level-slider', 'marks'),
+         Output('timestamp-slider', 'min'), Output('timestamp-slider',
+                                                   'max'), Output('timestamp-slider', 'marks')
          ],
         [Input('received-data', 'active_cell'), Input('received-data', 'page_current'), Input('received-data', 'page_size'),
+         Input('received-data', 'data'),
          Input('timestamp-slider', 'value'), Input('level-slider', 'value')])
-    def update_graphs(active_cell, page_current, page_size, timestamp_index,  level):
-        global listCompletedFields
-
+    def update_graphs(active_cell, page_current, page_size, fields_table, timestamp_index,  level):
         if not active_cell:
             raise PreventUpdate
 
-        timestamp = listCompletedFields[timestamp_index]["timestamp"]
-        listFields = listCompletedFields[timestamp_index]["fields"]
+        dimkey = "2d_field" if (active_cell["column"] == 0) else "3d_field"
         idx = active_cell["row"] + page_current*page_size
-        # we are on a page beyond the number of fields
-        if idx >= len(listFields):
+        # row pointing to non existing row in this page (happens when moving page)
+        if len(fields_table) <= idx:
             raise PreventUpdate
 
-        fieldIs2d = False
-        if active_cell["column"] == 0:
-            fieldIs2d = True
+        fieldname = fields_table[idx][dimkey]
 
-        fieldname = getFieldnameFromList(
-            fieldIs2d, listFields, active_cell["row"] + page_current*page_size)
+        timestamps = sorted(findTimestampsWithField(datapool, fieldname))
+
+        if not timestamps:
+            raise Exception("no single timestamp found for field ", fieldname)
+
+        timestamp = timestamps[0] if timestamp_index == -1 else timestamp_index
 
         # In case the input that trigger the callback is not the table selection, but the timestamp-slider
         # it can happen that the cell selected is pointing to an out of range in the new timestamp-slider
@@ -417,6 +387,6 @@ if __name__ == '__main__':
             )}
 
         # , {i: str(i) for i in range(fieldarr.shape[2]-1)}]
-        return [dcc.Graph(id='plot', figure=figure), (fieldarr.shape[2]-1), {i: str(i) for i in range(fieldarr.shape[2])}]
+        return [dcc.Graph(id='plot', figure=figure), (fieldarr.shape[2]-1), {i: str(i) for i in range(fieldarr.shape[2])}, timestamps[0], timestamps[-1], {i: str(i) for i in timestamps}]
 
     app.run_server(debug=True, host='0.0.0.0', port=3001)
