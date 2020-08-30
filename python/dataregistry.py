@@ -94,7 +94,7 @@ class DataRegistry:
                         *([float(x) for x in fieldval['region']['cuboid']['hregion'].split(',')]))
             userdatareqs.append(data.UserDataReq(field, datareqdesc))
 
-        self.subscribe("file_",userdatareqs)
+        self.subscribe("file_", userdatareqs)
 
     def complete(self):
         self.verboseprint_("checking completeness of data request groups:")
@@ -110,7 +110,8 @@ class DataRegistry:
         groupRequest = self.groupRequests_[groupId]
 
         dataRequestDict = groupRequest.timeDataRequests_[timestamp]
-        self.verboseprint_("   ... checking for completeness of groupid/timestamp", groupId, "/", timestamp)
+        self.verboseprint_(
+            "   ... checking for completeness of groupid/timestamp", groupId, "/", timestamp)
         for field in [x.name for x in groupRequest.reqFields_]:
             self.verboseprint_("      ... checking field", field)
             if not dataRequestDict.get(field, NullRequest()).complete():
@@ -142,7 +143,7 @@ class DataRegistry:
 
         for field in datareqs:
             self.verboseprint_("gathering field/groupid/timestamp: ", field, "/", requestHandle.groupId_,
-                  "/", requestHandle.timestamp_)
+                               "/", requestHandle.timestamp_)
 
             dataReq = datareqs[field]
             df = fieldop.DistributedField(
@@ -163,7 +164,7 @@ class DataRegistry:
 
     def cleanTimestamp(self, requestHandle):
         self.verboseprint_("Deleting timestamp ", requestHandle.groupId_,
-              requestHandle.timestamp_)
+                           requestHandle.timestamp_)
         if requestHandle.timestamp_ in self.groupRequests_[requestHandle.groupId_].timeDataRequests_:
             del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[
                 requestHandle.timestamp_]
@@ -184,13 +185,15 @@ class DataRegistry:
                     raise RuntimeError(
                         "If wildcard is used, only one field (.*) can be declared:", field)
 
-            self.subscribeImpl(topicPrefix, userDataReqs=userDataReqs, registerall=False)
+            self.subscribeImpl(
+                topicPrefix, userDataReqs=userDataReqs, registerall=False)
         else:
             if userDataReqs[0].name == ".*":
-                self.subscribeImpl(topicPrefix, userDataReqs=userDataReqs, registerall=True)
+                self.subscribeImpl(
+                    topicPrefix, userDataReqs=userDataReqs, registerall=True)
             else:
-                self.subscribeImpl(topicPrefix,  
-                    userDataReqs=userDataReqs, registerall=False)
+                self.subscribeImpl(topicPrefix,
+                                   userDataReqs=userDataReqs, registerall=False)
 
     def subscribeImpl(self, *, userDataReqs, registerall: bool):
         if registerall:
@@ -252,7 +255,8 @@ class DataRegistryStreaming(DataRegistry):
             self.verboseprint_("SUBSCRIBING TO ^"+topicPrefix+".*")
             self.c_.subscribe(["^"+topicPrefix+".*"])
         else:
-            self.verboseprint_("SUBSCRIBING TO ", [topicPrefix+x.name for x in userDataReqs])
+            self.verboseprint_("SUBSCRIBING TO ", [
+                               topicPrefix+x.name for x in userDataReqs])
             self.c_.subscribe([topicPrefix+x.name for x in userDataReqs])
 
     def poll(self, seconds):
@@ -280,9 +284,10 @@ class DataRegistryStreaming(DataRegistry):
             requestHandle = DataRegistry.subscribeIfNotExists(self, msKey.key)
             assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
-            self.verboseprint_("checking a message with key ", msKey.key, " among requests of fields:", [x.name for x in groupRequests.reqFields_])
+            self.verboseprint_("checking a message with key ", msKey.key, " among requests of fields:", [
+                               x.name for x in groupRequests.reqFields_])
             if msKey.key in [x.name for x in groupRequests.reqFields_]:
-                self.verboseprint_(" ... inserting data patch:",msKey.key)
+                self.verboseprint_(" ... inserting data patch:", msKey.key)
                 field = msKey.key
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,
                                      fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen,
@@ -296,9 +301,10 @@ class OutputDataRegistry:
 
 
 class OutputDataRegistryFile(OutputDataRegistry):
-    def __init__(self, filename: str, datapool: data.DataPool):
+    def __init__(self, filename: str, datapool: data.DataPool, verboseprint=print):
         self.datapool_ = datapool
         self.filename_ = filename
+        self.verboseprint_ = verboseprint
 
     def sendData(self):
         for timest in self.datapool_.data_:
@@ -307,14 +313,17 @@ class OutputDataRegistryFile(OutputDataRegistry):
 
     def writeDataTimestamp(self, timestamp, datapool):
         dt = datetime.fromtimestamp(timestamp)
-        filename = self.filename_ + str(dt.year) + str(dt.month).zfill(2) + str(dt.day).zfill(2) + str(dt.hour).zfill(
-            2) + str(dt.minute).zfill(2) + str(dt.second).zfill(2) + ".nc"
-
-        openmode = 'a' if os.path.isfile(filename) else 'w'
-
-        out_nc = Dataset(filename, openmode, format='NETCDF4')
 
         for fieldname in datapool:
+
+            filename = self.filename_ + "_"+fieldname+"_"+str(dt.year) + str(dt.month).zfill(2) + str(dt.day).zfill(2) + str(dt.hour).zfill(
+                2) + str(dt.minute).zfill(2) + str(dt.second).zfill(2) + ".nc"
+
+            if os.path.isfile(filename):
+                raise Exception("File for field exists:", filename)
+
+            out_nc = Dataset(filename, 'w', format='NETCDF4')
+
             field = datapool[fieldname].data_
             levdimname = "lev" + str(field.ksize())
             if not levdimname in out_nc.dimensions:
@@ -328,6 +337,7 @@ class OutputDataRegistryFile(OutputDataRegistry):
             if not latdimname in out_nc.dimensions:
                 out_nc.createDimension(latdimname, field.jsize())
 
+            self.verboseprint_("creating netcdf variable ", fieldname)
             fvar = out_nc.createVariable(fieldname, "f4",
                                          (levdimname, latdimname, londimname),
                                          fill_value=-undef)
@@ -338,14 +348,14 @@ class OutputDataRegistryFile(OutputDataRegistry):
 
             fvar[:, :, :] = tmp[:, :, :]
 
-        out_nc.close()
+            out_nc.close()
 
 
 class DataRegistryFile(DataRegistry):
-    def __init__(self, filename):
+    def __init__(self, filename, verboseprint=print):
         self.filename_ = filename
         self.npart_ = [2, 3]
-        DataRegistry.__init__(self)
+        DataRegistry.__init__(self, verboseprint)
 
     def subscribeImpl(self, topicPrefix, *, userDataReqs, registerall):
         requestHandle = DataRegistry.subscribeImpl(

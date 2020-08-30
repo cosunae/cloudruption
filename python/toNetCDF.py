@@ -16,18 +16,20 @@ import grid_operator as go
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='toNetCDF')
     parser.add_argument('--file', help='grib/netcdf filename')
+    parser.add_argument('-v', default=False, action='store_true')
 
     args = parser.parse_args()
+    verboseprint = print if args.v else lambda *a, **k: None
     if args.file:
-        reg = dreg.DataRegistryFile(args.file)
+        reg = dreg.DataRegistryFile(args.file, verboseprint)
     else:
-        reg = dreg.DataRegistryStreaming()
+        reg = dreg.DataRegistryStreaming(verboseprint)
 
     reg.loadData(__file__.replace(".py", ".yaml"))
 
     tmpDatapool = data.DataPool()
 
-    outreg = dreg.OutputDataRegistryFile("ou_ncfile", tmpDatapool)
+    outreg = dreg.OutputDataRegistryFile(
+        "ou_ncfile", tmpDatapool, verboseprint)
 
     go.grid_operator()(go.identity(), reg, tmpDatapool, outreg=outreg, service=True)
-
