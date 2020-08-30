@@ -1,4 +1,8 @@
+#kafkabroker: localhost:9092
+inputfile: /data/cosmo-7/laf2018020200
+product: postproc
 default:
   fields:
     .*:
       desc: 3d
+

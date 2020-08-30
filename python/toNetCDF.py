@@ -6,30 +6,47 @@ import matplotlib.pyplot as plt
 import argparse
 import time
 import dataregistry as dreg
+import dataregistryfile as freg
 from numba import jit
 from typing import List
 import math
 import fieldop
 import data
 import grid_operator as go
+import yaml
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='toNetCDF')
-    parser.add_argument('--file', help='grib/netcdf filename')
     parser.add_argument('-v', default=False, action='store_true')
 
     args = parser.parse_args()
     verboseprint = print if args.v else lambda *a, **k: None
-    if args.file:
-        reg = dreg.DataRegistryFile(args.file, verboseprint)
-    else:
-        reg = dreg.DataRegistryStreaming(verboseprint)
 
-    reg.loadData(__file__.replace(".py", ".yaml"))
+    configfile = __file__.replace(".py", ".yaml")
+    f = open(configfile, "r", encoding="utf-8")
+    datad = yaml.load(f, Loader=yaml.Loader)
+
+    if "inputfile" in datad and "kafkabroker" in datad:
+        raise Exception("Only inputfile or kafkabroker option can be set")
+
+    if "inputfile" in datad:
+        reg = freg.DataRegistryFile(datad["inputfile"], verboseprint)
+    else:
+        kafkabroker = datad["kafkabroker"]
+        verboseprint("Setting kafka broker :", kafkabroker)
+        reg = dreg.DataRegistryStreaming(
+            broker=kafkabroker, verboseprint=verboseprint)
+
+    f.close()
+
+    print("*******************")
+
+    reg.loadData(configfile)
+    print("*******************")
 
     tmpDatapool = data.DataPool()
 
-    outreg = dreg.OutputDataRegistryFile(
+    outreg = freg.OutputDataRegistryFile(
         "ou_ncfile", tmpDatapool, verboseprint)
 
     go.grid_operator()(go.identity(), reg, tmpDatapool, outreg=outreg, service=True)

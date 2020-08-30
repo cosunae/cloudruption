@@ -1,13 +1,15 @@
 import dataregistry as dreg
+import dataregistryfile as freg
 import data
 
+
 class identity:
-    def __call__(self, datapool: data.DataPool, timestamp, gbc ):
+    def __call__(self, datapool: data.DataPool, timestamp, gbc):
         pass
 
 
 class grid_operator:
-    def __call__(self, operator, reg: dreg.DataRegistry, datapool: data.DataPool, *, outreg: dreg.OutputDataRegistryFile=None, service=None):
+    def __call__(self, operator, reg: dreg.DataRegistry, datapool: data.DataPool, *, outreg: freg.OutputDataRegistryFile = None, service=None):
         gbc = {}
         while True:
             reg.poll(1.0)
@@ -19,4 +21,3 @@ class grid_operator:
                     outreg.sendData()
                 if not service:
                     break
-
