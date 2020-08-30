@@ -9,18 +9,48 @@ import fieldop
 import os.path
 from netCDF4 import Dataset
 from values import undef
+import boto3
+from botocore.exceptions import ClientError
+import logging
 
 
 class OutputDataRegistryFile(dreg.OutputDataRegistry):
-    def __init__(self, filename: str, datapool: data.DataPool, verboseprint=print):
+    def __init__(self, filename: str, datapool: data.DataPool, verboseprint=print, s3bucket=None):
         self.datapool_ = datapool
         self.filename_ = filename
         self.verboseprint_ = verboseprint
+        self.s3bucket_ = s3bucket
 
     def sendData(self):
         for timest in self.datapool_.data_:
             self.writeDataTimestamp(timest, self.datapool_.data_[timest])
         self.datapool_.data_ = {}
+
+    def s3upload(self, file_name, object_name=None):
+        """Upload a file to an S3 bucket
+
+        :param file_name: File to upload
+        :param bucket: Bucket to upload to
+        :param object_name: S3 object name. If not specified then file_name is used
+        :return: True if file was uploaded, else False
+        """
+
+        if not self.s3bucket_:
+            return
+
+        # If S3 object_name was not specified, use file_name
+        if object_name is None:
+            object_name = file_name
+
+        # Upload the file
+        s3_client = boto3.client('s3')
+        try:
+            response = s3_client.upload_file(
+                file_name, self.s3bucket_, object_name)
+        except ClientError as e:
+            logging.error(e)
+            return False
+        return True
 
     def writeDataTimestamp(self, timestamp, datapool):
         dt = datetime.fromtimestamp(timestamp)
@@ -60,6 +90,8 @@ class OutputDataRegistryFile(dreg.OutputDataRegistry):
             fvar[:, :, :] = tmp[:, :, :]
 
             out_nc.close()
+
+            self.s3upload(filename)
 
 
 class DataRegistryFile(dreg.DataRegistry):

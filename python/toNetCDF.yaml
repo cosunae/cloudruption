@@ -1,6 +1,7 @@
 #kafkabroker: localhost:9092
 inputfile: /data/cosmo-7/laf2018020200
 product: postproc
+s3bucket: cosmotest2
 default:
   fields:
     .*:

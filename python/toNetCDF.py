@@ -25,6 +25,7 @@ if __name__ == '__main__':
     configfile = __file__.replace(".py", ".yaml")
     f = open(configfile, "r", encoding="utf-8")
     datad = yaml.load(f, Loader=yaml.Loader)
+    f.close()
 
     if "inputfile" in datad and "kafkabroker" in datad:
         raise Exception("Only inputfile or kafkabroker option can be set")
@@ -37,8 +38,6 @@ if __name__ == '__main__':
         reg = dreg.DataRegistryStreaming(
             broker=kafkabroker, verboseprint=verboseprint)
 
-    f.close()
-
     print("*******************")
 
     reg.loadData(configfile)
@@ -47,6 +46,6 @@ if __name__ == '__main__':
     tmpDatapool = data.DataPool()
 
     outreg = freg.OutputDataRegistryFile(
-        "ou_ncfile", tmpDatapool, verboseprint)
+        "ou_ncfile", tmpDatapool, verboseprint=verboseprint, s3bucket=datad["s3bucket"])
 
     go.grid_operator()(go.identity(), reg, tmpDatapool, outreg=outreg, service=True)
