@@ -190,7 +190,7 @@ def delete_kafka_topics(kafka_broker, topic_regex):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(prog='test.py')
+    parser = argparse.ArgumentParser(prog='producer_dash.py')
     parser.add_argument(
         '--producer', help='path to producer executable', required=True)
     parser.add_argument(

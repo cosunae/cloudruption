@@ -15,13 +15,8 @@ import data
 import grid_operator as go
 import yaml
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(prog='toNetCDF')
-    parser.add_argument('-v', default=False, action='store_true')
 
-    args = parser.parse_args()
-    verboseprint = print if args.v else lambda *a, **k: None
-
+def toNetCDF():
     configfile = __file__.replace(".py", ".yaml")
     f = open(configfile, "r", encoding="utf-8")
     datad = yaml.load(f, Loader=yaml.Loader)
@@ -49,3 +44,11 @@ if __name__ == '__main__':
         "ou_ncfile", tmpDatapool, verboseprint=verboseprint, s3bucket=datad["s3bucket"])
 
     go.grid_operator()(go.identity(), reg, tmpDatapool, outreg=outreg, service=True)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(prog='toNetCDF')
+    parser.add_argument('-v', default=False, action='store_true')
+
+    args = parser.parse_args()
+    verboseprint = print if args.v else lambda *a, **k: None
