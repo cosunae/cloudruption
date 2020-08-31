@@ -2,12 +2,54 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 import argparse
 import sd_material_ui
 import toNetCDF as tonetcdf
+import random
+import string
+import pathlib
+import json
+import subprocess
+import os
 
 app = dash.Dash()
 verbose = False
+
+
+def get_random_string(length):
+    letters = string.ascii_lowercase
+    result_str = ''.join(random.choice(letters) for i in range(length))
+    return result_str
+
+
+def subscribeOutputProducts(kafka_broker, product, s3bucket):
+
+    configfilename = "toNetCDF.yaml"
+
+    jdata = {}
+    jdata['kafkabroker'] = kafka_broker
+    jdata['product'] = product
+    jdata['s3bucket'] = s3bucket
+    jdata['default'] = {}
+    jdata['default']['fields'] = {}
+    jdata['default']['fields']['.*'] = {}
+    jdata['default']['fields']['.*']["desc"] = "3d"
+
+    cdir = pathlib.Path(__file__).parent.absolute()
+    tmpdir = cdir / pathlib.Path('tmpdash___')
+
+    if not os.path.exists(tmpdir):
+        os.makedirs(tmpdir)
+
+    filenameflat = pathlib.Path(product+get_random_string(4))
+
+    tconfig = tmpdir / filenameflat.with_suffix(".configtmp.json")
+    with open(tconfig, "w") as jfile:
+        json.dump(jdata, jfile)
+
+    tonetcdf.outputProducts(tconfig)
+
 
 if __name__ == '__main__':
 
@@ -52,62 +94,15 @@ if __name__ == '__main__':
         ]),
     ])
 
-
-def launchProducer(kafka_broker):
-
-    # test valid broker, it will throw in case of invalid broker
-    topics = get_topics(kafka_broker)
-
-    cdir = pathlib.Path(__file__).parent.absolute()
-    tmpdir = cdir / pathlib.Path('tmpdash___')
-    if not pathlib.Path(tmpdir).exists():
-        os.mkdir(tmpdir)
-    lockf = tmpdir / filenameflat.with_suffix(".rlock")
-
-    # Can not acquire lock
-    if pathlib.Path(lockf).exists():
-        raise Exception(
-            "Can not acquier lock to produce file, another process already running")
-
-    fparts = str(filename).split('/')
-    bucket = fparts[1]
-    key = str('/').join(fparts[2:])
-
-    localfile = str(tmpdir / filename).replace('/', '_')
-    s3 = boto3.resource('s3')
-    s3.Object(bucket, key).download_file(localfile)
-
-    jfile = open(producerConfig, "r")
-    jdata = json.load(jfile)
-    jfile.close()
-    jdata['kafkabroker'] = kafka_broker
-    jdata['parsegrib'] = pgrib
-    jdata['lockfile'] = str(lockf)
-    jdata['files'] = [localfile]
-    jdata['product'] = "pp"
-
-    tconfig = tmpdir / filenameflat.with_suffix(".configtmp.json")
-    jfile = open(tconfig, "w")
-    json.dump(jdata, jfile)
-    jfile.close()
-
-    res = subprocess.run([producer, tconfig], check=True,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if verbose:
-        print('stdout:', res.stdout)
-        print('stderr:', res.stderr)
-
     @app.callback([dash.dependencies.Output('snackbar-submit-io', 'open'),
                    dash.dependencies.Output('snackbar-submit-io', 'message')],
                   [Input('submit-buttom', 'n_clicks')], [State('input_kafka_broker', 'value'),
                                                          State('input_product_prefix', 'value'), State('input_s3_bucket', 'value')])
-    def delete_topics_cb(n_clicks, kafka_broker, product_prefix, s3bucket):
-        try:
-            topics_to_be_deleted = delete_kafka_topics(kafka_broker, regex)
-        except Exception as ex:
-            print(ex)
+    def subscribe_an_output_product(n_clicks, kafka_broker, product_prefix, s3bucket):
+        if n_clicks <= 0:
             raise PreventUpdate
 
+        subscribeOutputProducts(kafka_broker, product_prefix, s3bucket)
         return True, "recording kafa products, "+product_prefix+" into s3 bucket: "+s3bucket
 
     app.run_server(debug=True, host='0.0.0.0', port=3000)

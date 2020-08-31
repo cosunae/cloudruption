@@ -16,8 +16,7 @@ import grid_operator as go
 import yaml
 
 
-def toNetCDF():
-    configfile = __file__.replace(".py", ".yaml")
+def outputProducts(configfile, verboseprint=lambda *a, **k: None):
     f = open(configfile, "r", encoding="utf-8")
     datad = yaml.load(f, Loader=yaml.Loader)
     f.close()
@@ -52,3 +51,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     verboseprint = print if args.v else lambda *a, **k: None
+
+    configfile = __file__.replace(".py", ".yaml")
+    outputProducts(configfile, verboseprint=verboseprint)
