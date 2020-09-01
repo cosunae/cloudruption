@@ -6,8 +6,6 @@ import argparse
 import time
 import dataregistry as dreg
 import dataregistryfile as freg
-from numba import jit
-from typing import List
 import math
 import fieldop
 import data
