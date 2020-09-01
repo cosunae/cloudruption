@@ -7,7 +7,7 @@ import argparse
 import time
 import dataregistry as dreg
 import dataregistryfile as freg
-from numba import jit, stencil
+#from numba import jit, stencil
 from typing import List
 import math
 import fieldop

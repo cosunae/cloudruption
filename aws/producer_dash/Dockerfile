@@ -2,9 +2,9 @@ FROM ubuntu:18.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenmpi-dev git libgcc-8-dev ssh  ca-certificates \
-    make g++-8 tar wget \
+    make g++-8 gfortran-8 tar wget \
     python3.7-dev python3-distutils libnetcdf-dev librdkafka-dev librdkafka1 librdkafka++1 \
-    openssl libssl-dev curl unzip python3-pip python3-setuptools
+    openssl libssl-dev curl unzip python3-pip python3-setuptools python3-dev
 
 RUN mkdir ~/temp && cd ~/temp && \
     wget https://github.com/Kitware/CMake/releases/download/v3.16.5/cmake-3.16.5.tar.gz && \
@@ -32,9 +32,10 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
 #invalidate the cache when the head of the repo changes
 ADD https://api.github.com/repos/cosunae/cloudruption/git/refs/heads/master version.json
 RUN git clone https://github.com/cosunae/cloudruption.git 
-RUN cd  /home/cloudruption/ProducerConsumer  && export CXX=g++-8 && export CC=gcc-8 && \
-    rm -rf build && mkdir build  && cd build &&  cmake  -DENABLE_PRODUCER=ON -Deccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ .. && \
-    make -j3 
+RUN export eccodes_DIR=/usr/share/eccodes/lib/cmake/eccodes/ && \
+    export FC=`which gortran-8` && export CXX=`which g++-8` && \
+    cd /home/cloudruption/ProducerConsumer && pip3 install -v .
+
  
 RUN mkdir /home/cloudruption/config    
 RUN mkdir /data
