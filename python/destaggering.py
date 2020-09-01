@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import argparse
 import time
 import dataregistry as dreg
+import dataregistryfile as freg
 from numba import jit, stencil
 from typing import List
 import math
@@ -98,7 +99,7 @@ if __name__ == '__main__':
 
     reg.loadData(__file__.replace(".py", ".yaml"), tag="default")
 
-    outreg = dreg.OutputDataRegistryFile("ou_ncfile", outDatapool)
+    outreg = freg.OutputDataRegistryFile("ou_ncfile", outDatapool)
 
     go.grid_operator()(staggering_operator(dx, dy), reg,
                        outDatapool, outreg=outreg, service=True)
