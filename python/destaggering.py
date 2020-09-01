@@ -3,7 +3,6 @@ import time
 import struct
 import numpy as np
 import string
-import matplotlib.pyplot as plt
 import argparse
 import time
 import dataregistry as dreg
