@@ -16,12 +16,12 @@ import uuid
 import grid_operator as go
 
 
-@stencil
+#@stencil
 def stencilx(a):
     return np.float32(0.5) * (a[-1, 0, 0] + a[1, 0, 0])
 
 
-@stencil
+#@stencil
 def stencily(a):
     return np.float32(0.5) * (a[0, -1, 0] + a[0, 1, 0])
 
