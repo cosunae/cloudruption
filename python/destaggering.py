@@ -66,7 +66,7 @@ class staggering_operator:
 def replace_conf(params):
     conffile=__file__.replace(".py", ".yaml")
     with open(conffile) as f:
-        doc = yaml.load(f)
+        doc = yaml.load(f, Loader=yaml.FullLoader)
 
     for key,val in params.items():
         doc[key] = val
