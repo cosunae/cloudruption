@@ -65,14 +65,16 @@ class staggering_operator:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='destaggering')
-    parser.add_argument('--file', help='grib/netcdf filename')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--file', help='grib/netcdf filename')
+    group.add_argument('--kafkabroker', help='kafka broker url')
 
     args = parser.parse_args()
 
     if args.file:
-        reghs = dreg.DataRegistryFile(args.file)
+        reghs = freg.DataRegistryFile(args.file)
     else:
-        reghs = dreg.DataRegistryStreaming()
+        reghs = dreg.DataRegistryStreaming(broker=args.kafkabroker)
 
     datapool = data.DataPool()
 
@@ -93,9 +95,9 @@ if __name__ == '__main__':
     outDatapool = data.DataPool()
 
     if args.file:
-        reg = dreg.DataRegistryFile(args.file)
+        reg = freg.DataRegistryFile(args.file)
     else:
-        reg = dreg.DataRegistryStreaming()
+        reg = dreg.DataRegistryStreaming(broker=args.kafkabroker)
 
     reg.loadData(__file__.replace(".py", ".yaml"), tag="default")
 
