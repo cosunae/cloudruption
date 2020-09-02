@@ -14,6 +14,7 @@ import fieldop
 import data
 import uuid
 import grid_operator as go
+import yaml
 
 
 #@stencil
@@ -62,6 +63,16 @@ class staggering_operator:
                 datapool.insert(timestamp, fieldname,
                                 fieldop.field3d(staggeredField), key)
 
+def replace_conf(params):
+    conffile=__file__.replace(".py", ".yaml")
+    with open(conffile) as f:
+        doc = yaml.load(f)
+
+    for key,val in params.items():
+        doc[key] = val
+
+    with open(conffile, 'w') as f:
+        yaml.dump(doc, f)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='destaggering')
@@ -69,7 +80,14 @@ if __name__ == '__main__':
     group.add_argument('--file', help='grib/netcdf filename')
     group.add_argument('--kafkabroker', help='kafka broker url')
 
+    parser.add_argument('--product', help='the product that defines kafka topic prefix')
     args = parser.parse_args()
+
+    if args.product and not args.kafkabroker:
+        raise Exception("product can only be defined when kafkabroker is set")
+
+    if args.product:
+        replace_conf({"product": args.product})
 
     if args.file:
         reghs = freg.DataRegistryFile(args.file)
