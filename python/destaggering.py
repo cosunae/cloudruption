@@ -81,6 +81,7 @@ if __name__ == '__main__':
     group.add_argument('--kafkabroker', help='kafka broker url')
 
     parser.add_argument('--product', help='the product that defines kafka topic prefix')
+    parser.add_argument('-v', detault=False, action='store_true')
     args = parser.parse_args()
 
     if args.product and not args.kafkabroker:
@@ -89,10 +90,14 @@ if __name__ == '__main__':
     if args.product:
         replace_conf({"product": args.product})
 
+    verboseprint=lambda *a, **k: None
+    if args.v:
+        verboseprint=print
+
     if args.file:
-        reghs = freg.DataRegistryFile(args.file)
+        reghs = freg.DataRegistryFile(args.file, verboseprint=verboseprint)
     else:
-        reghs = dreg.DataRegistryStreaming(broker=args.kafkabroker)
+        reghs = dreg.DataRegistryStreaming(broker=args.kafkabroker, verboseprint=verboseprint)
 
     datapool = data.DataPool()
 
@@ -113,9 +118,9 @@ if __name__ == '__main__':
     outDatapool = data.DataPool()
 
     if args.file:
-        reg = freg.DataRegistryFile(args.file)
+        reg = freg.DataRegistryFile(args.file, verboseprint=verboseprint)
     else:
-        reg = dreg.DataRegistryStreaming(broker=args.kafkabroker)
+        reg = dreg.DataRegistryStreaming(broker=args.kafkabroker, verboseprint=verboseprint)
 
     reg.loadData(__file__.replace(".py", ".yaml"), tag="default")
 
