@@ -81,7 +81,7 @@ if __name__ == '__main__':
     group.add_argument('--kafkabroker', help='kafka broker url')
 
     parser.add_argument('--product', help='the product that defines kafka topic prefix')
-    parser.add_argument('-v', detault=False, action='store_true')
+    parser.add_argument('-v', default=False, action='store_true')
     args = parser.parse_args()
 
     if args.product and not args.kafkabroker:
