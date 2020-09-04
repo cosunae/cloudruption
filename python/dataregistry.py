@@ -7,10 +7,12 @@ import data
 import sys
 import fieldop
 import numpy as np
-from confluent_kafka import Consumer, KafkaError
+from confluent_kafka import Consumer, KafkaError, Producer
 from dataclasses import dataclass
 import yaml
 import datarequest as dreq
+import socket
+from datetime import datetime, timezone
 
 
 class ActionType(IntEnum):
@@ -26,11 +28,11 @@ class NullRequest:
 
 # Warning, dataclass decorator here generates static members
 class GroupRequest:
-    """ A group of requested fields that are associated to a group. 
-    A group request is considered completed only when all fields registered 
+    """ A group of requested fields that are associated to a group.
+    A group request is considered completed only when all fields registered
     in the group are complete
 
-    Attributes: 
+    Attributes:
       reqFields_ ([UserDataReq])
       timeDataRequests_ ({timestamp: {"field": DataRequest}})
     """
@@ -95,7 +97,8 @@ class DataRegistry:
     def completeg(self, groupId):
         groupRequest = self.groupRequests_[groupId]
 
-        self.verboseprint_("  ... groupreq:", groupRequest, groupRequest.timeDataRequests_)
+        self.verboseprint_("  ... groupreq:", groupRequest,
+                           groupRequest.timeDataRequests_)
         for timestamp in groupRequest.timeDataRequests_:
             self.verboseprint_("   ... checking timestamp:", timestamp)
             requestHandle = self.completegt(groupId, timestamp)
@@ -111,7 +114,8 @@ class DataRegistry:
                     groupRequest.timeDataRequests_.keys())[0]), datapool)
 
     def gatherField(self, requestHandle: RequestHandle, datapool: data.DataPool):
-        self.verboseprint_("gather field:", requestHandle.groupId_, requestHandle.timestamp_)
+        self.verboseprint_(
+            "gather field:", requestHandle.groupId_, requestHandle.timestamp_)
         if self.completegt(requestHandle.groupId_, requestHandle.timestamp_) is None:
             return
         datareqs = self.groupRequests_[
@@ -274,3 +278,41 @@ class DataRegistryStreaming(DataRegistry):
 
 class OutputDataRegistry:
     pass
+
+
+class OutputDataRegistryStreaming(OutputDataRegistry):
+    def __init__(self, product, datapool: data.DataPool, broker='localhost:9092', group="group1", verboseprint=print):
+        self.product_ = product
+        self.datapool_ = datapool
+        self.verboseprint_ = verboseprint
+
+        self.p_ = Producer({'bootstrap.servers': broker,
+                            'client.id': socket.gethostname()})
+
+    def sendData(self):
+        for timest in self.datapool_.data_:
+            self.writeDataTimestamp(
+                timest, self.datapool_.data_[timest])
+        self.datapool_.data_ = {}
+
+    def writeDataTimestamp(self, timestamp, datapool):
+        dt = datetime.fromtimestamp(timestamp)
+
+        for fieldname in datapool:
+
+            field = datapool[fieldname].data_
+            fieldn = np.array(field, copy=False)
+
+            for k in range(field.ksize()):
+
+                # TODO there is no way to get that information
+                # We should only have sizes. dlon and coordinates should
+                # be map from a service from the product
+                msgKey = data.MsgKey(1, fieldname, 1, 0, timestamp, 0, 0, 0, field.isize(), field.jsize(
+                ), field.ksize(), field.isize(), field.jsize(), 0, 0, field.isize(), field.jsize())
+
+                topic = self.product_+"_"+fieldname
+
+                field2d = fieldn[:, :, k]
+                self.p_.produce(topic, key=msgKey.toBytes(),
+                                value=field2d.tobytes())
