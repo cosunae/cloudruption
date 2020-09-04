@@ -114,8 +114,7 @@ class DataRegistry:
                     groupRequest.timeDataRequests_.keys())[0]), datapool)
 
     def gatherField(self, requestHandle: RequestHandle, datapool: data.DataPool):
-        self.verboseprint_(
-            "gather field:", requestHandle.groupId_, requestHandle.timestamp_)
+        print("gather field:", requestHandle.groupId_, requestHandle.timestamp_)
         if self.completegt(requestHandle.groupId_, requestHandle.timestamp_) is None:
             return
         datareqs = self.groupRequests_[
@@ -143,7 +142,7 @@ class DataRegistry:
         return
 
     def cleanTimestamp(self, requestHandle):
-        self.verboseprint_("Deleting timestamp ", requestHandle.groupId_,
+        print("Deleting timestamp ", requestHandle.groupId_,
                            requestHandle.timestamp_)
         if requestHandle.timestamp_ in self.groupRequests_[requestHandle.groupId_].timeDataRequests_:
             del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[
@@ -232,10 +231,10 @@ class DataRegistryStreaming(DataRegistry):
             self, userDataReqs=userDataReqs, registerall=registerall)
 
         if registerall:
-            self.verboseprint_("SUBSCRIBING TO ^"+topicPrefix+".*")
+            print("SUBSCRIBING TO ^"+topicPrefix+".*")
             self.c_.subscribe(["^"+topicPrefix+".*"])
         else:
-            self.verboseprint_("SUBSCRIBING TO ", [
+            print("SUBSCRIBING TO ", [
                                topicPrefix+x.name for x in userDataReqs])
             self.c_.subscribe([topicPrefix+x.name for x in userDataReqs])
 
@@ -264,10 +263,10 @@ class DataRegistryStreaming(DataRegistry):
             requestHandle = DataRegistry.subscribeIfNotExists(self, msKey.key)
             assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
-            self.verboseprint_("checking a message with key ", msKey.key, " among requests of fields:", [
+            print("checking a message with key ", msKey.key, " among requests of fields:", [
                                x.name for x in groupRequests.reqFields_])
             if msKey.key in [x.name for x in groupRequests.reqFields_]:
-                self.verboseprint_(" ... inserting data patch:", msKey.key)
+                print(" ... inserting data patch:", msKey.key)
                 field = msKey.key
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,
                                      fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen,
