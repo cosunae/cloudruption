@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import numpy as np
 import fieldop
+import struct
 
 
 @dataclass
@@ -22,6 +23,26 @@ class MsgKey:
     longitudeOfLastGridPoint: float
     latitudeOfFirstGridPoint: float
     latitudeOfLastGridPoint: float
+
+    @staticmethod
+    def fromBytes(msg):
+        c1 = struct.unpack('i32c2i9Q4f', msg)
+        stringlist = ''.join([x.decode('utf-8') for x in c1[1:33]])
+        allargs = list(c1[0:1]) + [stringlist] + list(c1[33:])
+        key = MsgKey(*allargs)
+        key.key = key.key.rstrip().rstrip('\x00')
+        return key
+
+    def toBytes(self):
+        strlistb = [bytes(x, 'UTF-8')
+                    for x in list(self.key+" "*(32-len(self.key)))]
+        args = [self.action_type] + strlistb + [self.npatches, self.mpirank,
+                                                self.datetime, self.ilonstart, self.jlatstart, self.level, self.lonlen,
+                                                self.latlen, self.levlen, self.totlonlen, self.totlatlen,
+                                                self.longitudeOfFirstGridPoint, self.longitudeOfLastGridPoint,
+                                                self.latitudeOfFirstGridPoint, self.latitudeOfLastGridPoint]
+
+        return struct.pack('i32c2i9Q4f', *args)
 
 
 @dataclass
