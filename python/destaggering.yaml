@@ -1,9 +1,9 @@
-product: postproc
+default:
+  fields:
+    .*:
+      desc: null
 masspointref:
   fields:
     T:
       desc: 3d
-default:
-  fields:
-    .*:
-      desc:
+product: postproc
