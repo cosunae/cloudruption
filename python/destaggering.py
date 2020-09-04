@@ -44,7 +44,7 @@ class staggering_operator:
     def __init__(self, dx, dy):
         self.dx_ = dx
         self.dy_ = dy
-        self.monitoring_ = boto3.client('cloudwatch')
+        self.monitoring_ = boto3.client('cloudwatch', region_name='eu-central-1')
 
     def __call__(self, datapool: data.DataPool, timestamp, gbc):
         for fieldname in datapool[timestamp]:
