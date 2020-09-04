@@ -143,7 +143,7 @@ class DataRegistry:
 
     def cleanTimestamp(self, requestHandle):
         print("Deleting timestamp ", requestHandle.groupId_,
-                           requestHandle.timestamp_)
+              requestHandle.timestamp_)
         if requestHandle.timestamp_ in self.groupRequests_[requestHandle.groupId_].timeDataRequests_:
             del self.groupRequests_[requestHandle.groupId_].timeDataRequests_[
                 requestHandle.timestamp_]
@@ -235,7 +235,7 @@ class DataRegistryStreaming(DataRegistry):
             self.c_.subscribe(["^"+topicPrefix+".*"])
         else:
             print("SUBSCRIBING TO ", [
-                               topicPrefix+x.name for x in userDataReqs])
+                topicPrefix+x.name for x in userDataReqs])
             self.c_.subscribe([topicPrefix+x.name for x in userDataReqs])
 
     def poll(self, seconds):
@@ -264,7 +264,7 @@ class DataRegistryStreaming(DataRegistry):
             assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
             print("checking a message with key ", msKey.key, " among requests of fields:", [
-                               x.name for x in groupRequests.reqFields_])
+                x.name for x in groupRequests.reqFields_])
             if msKey.key in [x.name for x in groupRequests.reqFields_]:
                 print(" ... inserting data patch:", msKey.key)
                 field = msKey.key
@@ -298,11 +298,12 @@ class OutputDataRegistryStreaming(OutputDataRegistry):
         dt = datetime.fromtimestamp(timestamp)
 
         for fieldname in datapool:
-
+            self.verboseprint_("streaming out ", fieldname)
             field = datapool[fieldname].data_
             fieldn = np.array(field, copy=False)
 
             for k in range(field.ksize()):
+                self.verboseprint_("     on level ", k)
 
                 # TODO there is no way to get that information
                 # We should only have sizes. dlon and coordinates should
