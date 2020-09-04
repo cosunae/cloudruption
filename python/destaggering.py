@@ -71,7 +71,7 @@ class staggering_operator:
 def replace_conf(params):
     conffile = __file__.replace(".py", ".yaml")
     with open(conffile) as f:
-        doc = yaml.load(f, Loader=yaml.FullLoader)
+        doc = yaml.load(f)
 
     for key, val in params.items():
         doc[key] = val
@@ -106,14 +106,15 @@ if __name__ == '__main__':
     if args.product:
         replace_conf({"product": args.product})
 
-    verboseprint=lambda *a, **k: None
+    verboseprint = lambda *a, **k: None
     if args.v:
-        verboseprint=print
+        verboseprint = print
 
     if args.file:
         reghs = freg.DataRegistryFile(args.file, verboseprint=verboseprint)
     else:
-        reghs = dreg.DataRegistryStreaming(broker=args.kafkabroker, verboseprint=verboseprint)
+        reghs = dreg.DataRegistryStreaming(
+            broker=args.kafkabroker, verboseprint=verboseprint)
 
     datapool = data.DataPool()
 
@@ -136,7 +137,8 @@ if __name__ == '__main__':
     if args.file:
         reg = freg.DataRegistryFile(args.file, verboseprint=verboseprint)
     else:
-        reg = dreg.DataRegistryStreaming(broker=args.kafkabroker, verboseprint=verboseprint)
+        reg = dreg.DataRegistryStreaming(
+            broker=args.kafkabroker, verboseprint=verboseprint)
 
     reg.loadData(__file__.replace(".py", ".yaml"), tag="default")
 
