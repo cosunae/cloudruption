@@ -15,6 +15,8 @@ import data
 import uuid
 import grid_operator as go
 import yaml
+import boto3
+import datetime
 
 
 @stencil
@@ -42,6 +44,7 @@ class staggering_operator:
     def __init__(self, dx, dy):
         self.dx_ = dx
         self.dy_ = dy
+        self.monitoring_ = boto3.client('cloudwatch')
 
     def __call__(self, datapool: data.DataPool, timestamp, gbc):
         for fieldname in datapool[timestamp]:
@@ -66,6 +69,20 @@ class staggering_operator:
                 gbc[uuid.uuid1()] = staggeredField
                 datapool.insert(timestamp, fieldname,
                                 fieldop.field3d(staggeredField), key)
+                                
+        self.monitoring_.put_metric_data(Namespace='pp-destaggering', MetricData=[
+        {
+            'MetricName': 'step_timestamp',
+            'Dimensions': [
+                {
+                    'Name': 'timestep',
+                    'Value': 'string'
+                },
+            ],
+            'Timestamp': datetime.datetime.now(),
+            'Value': timestamp,
+            'Unit': 'Seconds'
+        }])
 
 
 def replace_conf(params):
