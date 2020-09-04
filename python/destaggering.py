@@ -7,7 +7,7 @@ import argparse
 import time
 import dataregistry as dreg
 import dataregistryfile as freg
-#from numba import jit, stencil
+from numba import jit, stencil
 from typing import List
 import math
 import fieldop
@@ -17,12 +17,12 @@ import grid_operator as go
 import yaml
 
 
-#@stencil
+@stencil
 def stencilx(a):
     return np.float32(0.5) * (a[-1, 0, 0] + a[1, 0, 0])
 
 
-#@stencil
+@stencil
 def stencily(a):
     return np.float32(0.5) * (a[0, -1, 0] + a[0, 1, 0])
 
@@ -46,6 +46,8 @@ class staggering_operator:
     def __call__(self, datapool: data.DataPool, timestamp, gbc):
         for fieldname in datapool[timestamp]:
             key = datapool[timestamp][fieldname].datadesc_
+            # if not key.levlen == 1:
+            #     continue
             field = datapool[timestamp][fieldname].data_
             dx_stag = (key.longitudeOfLastGridPoint -
                        hsurfkey.longitudeOfLastGridPoint) / self.dx_
@@ -55,24 +57,28 @@ class staggering_operator:
             ystag = math.isclose(dy_stag, 0.5, rel_tol=1e-5)
             if xstag or ystag:
                 print("Field :", fieldname,
-                      " is staggered in (x,y):", xstag, ",", ystag)
+                      " is staggered in (x,y):", xstag, ",", ystag, key.levlen, np.array(field, copy=False).shape)
                 staggeredField = destagger(field, math.isclose(dx_stag, 0.5, rel_tol=1e-5),
                                            math.isclose(dy_stag, 0.5, rel_tol=1e-5))
+
+                print("result :", staggeredField.shape)
                 # Avoid garbage collector
                 gbc[uuid.uuid1()] = staggeredField
                 datapool.insert(timestamp, fieldname,
                                 fieldop.field3d(staggeredField), key)
 
+
 def replace_conf(params):
-    conffile=__file__.replace(".py", ".yaml")
+    conffile = __file__.replace(".py", ".yaml")
     with open(conffile) as f:
         doc = yaml.load(f)
 
-    for key,val in params.items():
+    for key, val in params.items():
         doc[key] = val
 
     with open(conffile, 'w') as f:
         yaml.dump(doc, f)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='destaggering')
@@ -80,11 +86,21 @@ if __name__ == '__main__':
     group.add_argument('--file', help='grib/netcdf filename')
     group.add_argument('--kafkabroker', help='kafka broker url')
 
-    parser.add_argument('--product', help='the product that defines kafka topic prefix')
+    parser.add_argument(
+        '--product', help='the product that defines kafka topic prefix')
+    parser.add_argument('--ofile', nargs=1, help='netcdf output filename')
+    parser.add_argument('--oproduct', nargs=1, help='product of the output')
     args = parser.parse_args()
 
     if args.product and not args.kafkabroker:
         raise Exception("product can only be defined when kafkabroker is set")
+
+    if not args.kafkabroker and not args.ofile:
+        raise Exception('An output mechanism must be specified')
+
+    if not args.ofile and not args.oproduct:
+        raise Exception(
+            'In streaming mode, output product, --oproduct, must be specified')
 
     if args.product:
         replace_conf({"product": args.product})
@@ -119,7 +135,11 @@ if __name__ == '__main__':
 
     reg.loadData(__file__.replace(".py", ".yaml"), tag="default")
 
-    outreg = freg.OutputDataRegistryFile("ou_ncfile", outDatapool)
+    if args.ofile:
+        outreg = freg.OutputDataRegistryFile(args.ofile[0], outDatapool)
+    else:
+        outreg = dreg.OutputDataRegistryStreaming(args.oproduct[0], outDatapool,
+                                                  args.kafkabroker)
 
     go.grid_operator()(staggering_operator(dx, dy), reg,
                        outDatapool, outreg=outreg, service=True)
