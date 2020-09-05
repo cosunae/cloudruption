@@ -12,6 +12,13 @@ interface
         character(kind=c_char), intent(in) :: product(*)
     end function
 
+    subroutine aws_put_metric_impl(namespace, metricname, value) bind(c, name='aws_put_metric')
+        use iso_c_binding
+        character(kind=c_char), intent(in) :: namespace(*)
+        character(kind=c_char), intent(in) :: metricname(*)
+        integer(c_long_long), intent(in) :: value
+    end subroutine
+
     subroutine bind_produce_impl(producer, key, data, datasize, topic) bind(c, name='produce')
         use iso_c_binding
         import fKeyMessage
@@ -48,6 +55,14 @@ function bind_create_producer(broker, product) result(producer)
 
     producer = bind_create_producer_impl(f_c_string_func(broker), f_c_string_func(product))
 end function
+
+subroutine aws_put_metric(namespace, metricname, value) 
+    use iso_c_binding
+    character(kind=c_char, len=*), intent(in) :: namespace
+    character(kind=c_char, len=*), intent(in) :: metricname
+    integer(c_long_long), intent(in) :: value
+    call aws_put_metric_impl(f_c_string_func(namespace), f_c_string_func(metricname), value)
+end subroutine
 
 subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetime, &
     ilonstart, jlatstart, totlonlen, totlatlen,                  &
