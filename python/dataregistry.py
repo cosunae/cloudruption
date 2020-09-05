@@ -205,15 +205,6 @@ class DataRegistry:
         dataReqs[fieldname].insert(singlePatch, msgKey)
 
 
-def get_key(msg):
-    c1 = struct.unpack('i32c2i9Q4f', msg)
-    stringlist = ''.join([x.decode('utf-8') for x in c1[1:33]])
-    allargs = list(c1[0:1]) + [stringlist] + list(c1[33:])
-    key = data.MsgKey(*allargs)
-    key.key = key.key.rstrip().rstrip('\x00')
-    return key
-
-
 class DataRegistryStreaming(DataRegistry):
     def __init__(self, broker='localhost:9092', group="group1", verboseprint=print):
         self.c_ = Consumer({
@@ -252,7 +243,7 @@ class DataRegistryStreaming(DataRegistry):
         dt = np.dtype('<f4')
         al = np.frombuffer(msg.value(), dtype=dt)
 
-        msKey: data.MsgKey = get_key(msg.key())
+        msKey: data.MsgKey = data.MsgKey.fromBytes(msg.key())
 
         if msKey.action_type != int(ActionType.Data):
             return

@@ -30,7 +30,7 @@ class MsgKey:
         stringlist = ''.join([x.decode('utf-8') for x in c1[1:33]])
         allargs = list(c1[0:1]) + [stringlist] + list(c1[33:])
         key = MsgKey(*allargs)
-        key.key = key.key.rstrip().rstrip('\x00')
+        key.key = key.key.rstrip().split('\x00', 1)[0]
         return key
 
     def toBytes(self):
