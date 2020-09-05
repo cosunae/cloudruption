@@ -79,6 +79,8 @@ void KafkaProducer::produce(KeyMessage key, float *data, size_t datasize,
         /* Timestamp (defaults to now) */
         0, NULL);
 
+    producer_->poll(0);
+
     if (resp != RdKafka::ERR_NO_ERROR)
     {
         std::cerr << "% Produce failed: topic [" << topic << "], partition ["
