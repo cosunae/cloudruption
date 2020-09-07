@@ -22,7 +22,7 @@ extern "C"
     }
 
 #ifdef AWSSDK
-    void aws_put_metric_d(size_t value)
+    void aws_put_metric_d(int value)
     {
                   std::cout << "SET ................... value" << value << std::endl;
 

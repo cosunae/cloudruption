@@ -14,7 +14,7 @@ interface
 
     subroutine aws_put_metric_impl(val) bind(c, name='aws_put_metric_d')
         use iso_c_binding
-        integer(c_size_t), intent(in) :: val
+        integer(c_int), intent(in) :: val
     end subroutine
 
     subroutine bind_produce_impl(producer, key, data, datasize, topic) bind(c, name='produce')
@@ -56,7 +56,7 @@ end function
 
 subroutine aws_put_metric(val) 
     use iso_c_binding
-    integer(c_size_t), intent(in) :: val
+    integer(c_int), intent(in) :: val
     write(*,*) ",3333333333333333", val
     call aws_put_metric_impl(val)
 end subroutine
