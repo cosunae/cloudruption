@@ -32,6 +32,7 @@ extern "C"
             Aws::CloudWatch::Model::MetricDatum datum;
             datum.SetMetricName(metricname);
             datum.SetUnit(Aws::CloudWatch::Model::StandardUnit::Seconds);
+	    std::cout << "SET ................... value" << value << std::endl;
             datum.SetValue(value);
             Aws::CloudWatch::Model::PutMetricDataRequest request;
             request.SetNamespace(ns);
