@@ -56,8 +56,6 @@ end function
 
 subroutine aws_put_metric(namespace, metricname, val) 
     use iso_c_binding
-    character(kind=c_char, len=*), intent(in) :: namespace
-    character(kind=c_char, len=*), intent(in) :: metricname
     integer(c_size_t), intent(in) :: val
     write(*,*) ",3333333333333333", val
     call aws_put_metric_impl(val)
