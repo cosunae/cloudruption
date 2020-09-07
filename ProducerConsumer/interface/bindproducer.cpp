@@ -22,7 +22,7 @@ extern "C"
     }
 
 #ifdef AWSSDK
-    void aws_put_metric(const char *ns, const char *metricname, long long value)
+    void aws_put_metric(const char *ns, const char *metricname, size_t value)
     {
         Aws::SDKOptions options;
         Aws::InitAPI(options);
