@@ -54,7 +54,7 @@ function bind_create_producer(broker, product) result(producer)
     producer = bind_create_producer_impl(f_c_string_func(broker), f_c_string_func(product))
 end function
 
-subroutine aws_put_metric(namespace, metricname, val) 
+subroutine aws_put_metric(val) 
     use iso_c_binding
     integer(c_size_t), intent(in) :: val
     write(*,*) ",3333333333333333", val
