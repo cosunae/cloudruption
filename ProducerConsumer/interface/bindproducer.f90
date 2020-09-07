@@ -12,10 +12,8 @@ interface
         character(kind=c_char), intent(in) :: product(*)
     end function
 
-    subroutine aws_put_metric_impl(namespace, metricname, val) bind(c, name='aws_put_metric')
+    subroutine aws_put_metric_impl(val) bind(c, name='aws_put_metric_d')
         use iso_c_binding
-        character(kind=c_char), intent(in) :: namespace(*)
-        character(kind=c_char), intent(in) :: metricname(*)
         integer(c_size_t), intent(in) :: val
     end subroutine
 
@@ -62,7 +60,7 @@ subroutine aws_put_metric(namespace, metricname, val)
     character(kind=c_char, len=*), intent(in) :: metricname
     integer(c_size_t), intent(in) :: val
     write(*,*) ",3333333333333333", val
-    call aws_put_metric_impl(f_c_string_func(namespace), f_c_string_func(metricname), val)
+    call aws_put_metric_impl(val)
 end subroutine
 
 subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetime, &

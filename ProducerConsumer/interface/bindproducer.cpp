@@ -22,6 +22,11 @@ extern "C"
     }
 
 #ifdef AWSSDK
+    void aws_put_metric_d(size_t value)
+    {
+                  std::cout << "SET ................... value" << value << std::endl;
+
+    }
     void aws_put_metric(const char *ns, const char *metricname, size_t value)
     {
         Aws::SDKOptions options;
