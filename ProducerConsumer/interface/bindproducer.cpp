@@ -48,7 +48,9 @@ extern "C"
                 std::cout << "Successfully put sample metric data" << std::endl;
             }
         }
+	std::cout << "closing" << std::endl;
         Aws::ShutdownAPI(options);
+	std::cout << "shut" << std::endl;
     }
 #endif
 }
