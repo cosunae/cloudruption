@@ -16,7 +16,7 @@ interface
         use iso_c_binding
         character(kind=c_char), intent(in) :: namespace(*)
         character(kind=c_char), intent(in) :: metricname(*)
-        integer(c_long_long), intent(in) :: value
+        integer(c_long_long), intent(in), VALUE :: value
     end subroutine
 
     subroutine bind_produce_impl(producer, key, data, datasize, topic) bind(c, name='produce')
@@ -25,7 +25,7 @@ interface
         type(c_ptr), value, intent(in) :: producer
         type(fKeyMessage), intent(in) :: key
         type(c_ptr), value, intent(in) :: data
-        integer(c_size_t), intent(in):: datasize
+        integer(c_size_t), intent(in), VALUE :: datasize
         character(kind=c_char), intent(in) :: topic(*)
     end subroutine
 
