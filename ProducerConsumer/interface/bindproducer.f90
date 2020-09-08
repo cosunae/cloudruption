@@ -29,12 +29,6 @@ interface
         character(kind=c_char), intent(in) :: topic(*)
     end subroutine
 
-    subroutine aws_init() bind(c, name='aws_init')
-    end subroutine
-    subroutine aws_shutdown() bind(c, name='aws_shutdown')
-    end subroutine
-
-
 end interface
 
 contains 

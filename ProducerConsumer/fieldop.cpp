@@ -9,7 +9,8 @@
 
 using namespace pybind11::literals;
 
-PYBIND11_MODULE(fieldop, m) {
+PYBIND11_MODULE(fieldop, m)
+{
 
   pybind11::class_<DataDesc>(m, "DataDesc")
       .def(pybind11::init([](double a, double b, double c, double d,
@@ -41,7 +42,7 @@ PYBIND11_MODULE(fieldop, m) {
       .def_readwrite("levlen", &DataDesc::levlen);
 
   pybind11::class_<DomainConf>(m, "DomainConf")
-      .def(pybind11::init<int, int, int>())
+      .def(pybind11::init<size_t, size_t, size_t>())
       .def_readwrite("isize", &DomainConf::isize)
       .def_readwrite("jsize", &DomainConf::jsize)
       .def_readwrite("levels", &DomainConf::levels);
