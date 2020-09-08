@@ -15,7 +15,7 @@ extern "C"
         return producer;
     }
 
-    void produce(KafkaProducer *producer, KeyMessage &key, float *data, size_t &datasize,
+    void produce(KafkaProducer *producer, KeyMessage &key, float *data, size_t datasize,
                  const char *topic)
     {
         producer->produce(key, data, datasize, topic);
