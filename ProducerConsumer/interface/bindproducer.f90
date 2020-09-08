@@ -62,8 +62,11 @@ subroutine aws_put_metric(namespace, metricname, value, normalizeunixtime)
     character(kind=c_char, len=*), intent(in) :: namespace
     character(kind=c_char, len=*), intent(in) :: metricname
     integer(c_long_long), intent(in) :: value
-    logical(c_bool), intent(in), VALUE :: normalizeunixtime
-    call aws_put_metric_impl(f_c_string_func(namespace), f_c_string_func(metricname), value, normalizeunixtime)
+    logical, intent(in), VALUE :: normalizeunixtime
+    
+    logical(c_bool) ::  nunix
+    nunix =  normalizeunixtime
+    call aws_put_metric_impl(f_c_string_func(namespace), f_c_string_func(metricname), value, nunix)
 end subroutine
 
 subroutine bind_produce_3d(producer, field, fieldname, npatches, myrank, datetime, &
