@@ -71,10 +71,6 @@ class staggering_operator:
                 datapool.insert(timestamp, fieldname,
                                 fieldop.field3d(staggeredField), key)
             print("THE timestamp is", timestamp)
-            # unixtime of 2020.01.01 / 00h00m00s used to normalized large unixtimes
-
-            unix2020 = 1577836800
-
             self.monitoring_.put_metric_data(Namespace='pp-destaggering', MetricData=[
                 {
                     'MetricName': 'step_timestamp',
@@ -85,7 +81,7 @@ class staggering_operator:
                         },
                     ],
                     'Timestamp': datetime.datetime.now(),
-                    'Value': timestamp - unix2020,
+                    'Value': timestamp,
                     'Unit': 'Seconds'
                 }])
 
