@@ -44,7 +44,8 @@ class staggering_operator:
     def __init__(self, dx, dy):
         self.dx_ = dx
         self.dy_ = dy
-        self.monitoring_ = boto3.client('cloudwatch', region_name='eu-central-1')
+        self.monitoring_ = boto3.client(
+            'cloudwatch', region_name='eu-central-1')
 
     def __call__(self, datapool: data.DataPool, timestamp, gbc):
         for fieldname in datapool[timestamp]:
@@ -69,20 +70,24 @@ class staggering_operator:
                 gbc[uuid.uuid1()] = staggeredField
                 datapool.insert(timestamp, fieldname,
                                 fieldop.field3d(staggeredField), key)
-                                
+        print("THE timestamp is", timestamp)
+        # unixtime of 2020.01.01 / 00h00m00s used to normalized large unixtimes
+
+        unix2020 = 1577836800
+
         self.monitoring_.put_metric_data(Namespace='pp-destaggering', MetricData=[
-        {
-            'MetricName': 'step_timestamp',
-            'Dimensions': [
-                {
-                    'Name': 'timestep',
-                    'Value': 'string'
-                },
-            ],
-            'Timestamp': datetime.datetime.now(),
-            'Value': timestamp,
-            'Unit': 'Seconds'
-        }])
+            {
+                'MetricName': 'step_timestamp',
+                'Dimensions': [
+                    {
+                        'Name': 'timestep',
+                        'Value': 'string'
+                    },
+                ],
+                'Timestamp': datetime.datetime.now(),
+                'Value': timestamp - unix2020,
+                'Unit': 'Seconds'
+            }])
 
 
 def replace_conf(params):
