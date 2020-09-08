@@ -38,6 +38,7 @@ extern "C"
             datum.SetMetricName(metricname);
             datum.SetUnit(Aws::CloudWatch::Model::StandardUnit::Seconds);
             datum.SetValue(mvalue);
+	    std::cout << "NORMALIZE ???????????????????? " << normalizetime << "," << value << "," << mvalue << std::endl;
             Aws::CloudWatch::Model::PutMetricDataRequest request;
             request.SetNamespace(ns);
             request.AddMetricData(datum);
