@@ -25,7 +25,7 @@ interface
         type(c_ptr), value, intent(in) :: producer
         type(fKeyMessage), intent(in) :: key
         type(c_ptr), value, intent(in) :: data
-        integer(c_size_t), intent(in), VALUE :: datasize
+        integer(c_size_t), intent(in) :: datasize
         character(kind=c_char), intent(in) :: topic(*)
     end subroutine
 
