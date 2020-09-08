@@ -27,12 +27,16 @@ extern "C"
         Aws::SDKOptions options;
         Aws::InitAPI(options);
         {
+
+            // unixtime of 2020.01.01 / 00h00m00s used to normalized large unixtimes
+            size_t unix2020 = 1577836800;
+
             Aws::CloudWatch::CloudWatchClient cw;
 
             Aws::CloudWatch::Model::MetricDatum datum;
             datum.SetMetricName(metricname);
             datum.SetUnit(Aws::CloudWatch::Model::StandardUnit::Seconds);
-            datum.SetValue(value);
+            datum.SetValue(value - unix2020);
             Aws::CloudWatch::Model::PutMetricDataRequest request;
             request.SetNamespace(ns);
             request.AddMetricData(datum);
