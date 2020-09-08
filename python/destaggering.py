@@ -70,24 +70,24 @@ class staggering_operator:
                 gbc[uuid.uuid1()] = staggeredField
                 datapool.insert(timestamp, fieldname,
                                 fieldop.field3d(staggeredField), key)
-        print("THE timestamp is", timestamp)
-        # unixtime of 2020.01.01 / 00h00m00s used to normalized large unixtimes
+            print("THE timestamp is", timestamp)
+            # unixtime of 2020.01.01 / 00h00m00s used to normalized large unixtimes
 
-        unix2020 = 1577836800
+            unix2020 = 1577836800
 
-        self.monitoring_.put_metric_data(Namespace='pp-destaggering', MetricData=[
-            {
-                'MetricName': 'step_timestamp',
-                'Dimensions': [
-                    {
-                        'Name': 'timestep',
-                        'Value': 'string'
-                    },
-                ],
-                'Timestamp': datetime.datetime.now(),
-                'Value': timestamp - unix2020,
-                'Unit': 'Seconds'
-            }])
+            self.monitoring_.put_metric_data(Namespace='pp-destaggering', MetricData=[
+                {
+                    'MetricName': 'step_timestamp',
+                    'Dimensions': [
+                        {
+                            'Name': 'timestep',
+                            'Value': 'string'
+                        },
+                    ],
+                    'Timestamp': datetime.datetime.now(),
+                    'Value': timestamp - unix2020,
+                    'Unit': 'Seconds'
+                }])
 
 
 def replace_conf(params):

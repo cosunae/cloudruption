@@ -254,7 +254,7 @@ class DataRegistryStreaming(DataRegistry):
             requestHandle = DataRegistry.subscribeIfNotExists(self, msKey.key)
             assert requestHandle
         for groupId, groupRequests in enumerate(self.groupRequests_):
-            print("checking a message with key ", msKey.key, " among requests of fields:", [
+            self.verboseprint_("checking a message with key ", msKey.key, " among requests of fields:", [
                 x.name for x in groupRequests.reqFields_])
             if msKey.key in [x.name for x in groupRequests.reqFields_]:
                 print(" ... inserting data patch:", msKey.key)
