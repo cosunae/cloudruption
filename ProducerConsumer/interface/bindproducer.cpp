@@ -22,22 +22,17 @@ extern "C"
     }
 
 #ifdef AWSSDK
-    void aws_put_metric(const char *ns, const char *metricname, long long value, bool normalizetime)
+    void aws_put_metric(const char *ns, const char *metricname, long long value)
     {
         Aws::SDKOptions options;
         Aws::InitAPI(options);
         {
-
-            // unixtime of 2020.01.01 / 00h00m00s used to normalized large unixtimes
-            size_t unix2020 = 1577836800;
-            long long mvalue = normalizetime ? value - unix2020 : value;
-
             Aws::CloudWatch::CloudWatchClient cw;
 
             Aws::CloudWatch::Model::MetricDatum datum;
             datum.SetMetricName(metricname);
             datum.SetUnit(Aws::CloudWatch::Model::StandardUnit::Seconds);
-            datum.SetValue(mvalue);
+            datum.SetValue(value);
             Aws::CloudWatch::Model::PutMetricDataRequest request;
             request.SetNamespace(ns);
             request.AddMetricData(datum);
