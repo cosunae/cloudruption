@@ -168,7 +168,7 @@ if __name__ == '__main__':
         outreg = freg.OutputDataRegistryFile(args.ofile[0], outDatapool)
     else:
         outreg = dreg.OutputDataRegistryStreaming(args.oproduct[0], outDatapool,
-                                                  args.kafkabroker)
+                                                  args.kafkabroker, verboseprint=verboseprint)
 
     go.grid_operator()(staggering_operator(dx, dy), reg,
                        outDatapool, outreg=outreg, service=True)

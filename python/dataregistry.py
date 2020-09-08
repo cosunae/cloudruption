@@ -257,7 +257,7 @@ class DataRegistryStreaming(DataRegistry):
             self.verboseprint_("checking a message with key ", msKey.key, " among requests of fields:", [
                 x.name for x in groupRequests.reqFields_])
             if msKey.key in [x.name for x in groupRequests.reqFields_]:
-                print(" ... inserting data patch:", msKey.key)
+                self.verboseprint_(" ... inserting data patch:", msKey.key)
                 field = msKey.key
                 self.insertDataPatch(RequestHandle(groupId, msKey.datetime), field,
                                      fieldop.SinglePatch(msKey.ilonstart, msKey.jlatstart, msKey.lonlen, msKey.latlen,
